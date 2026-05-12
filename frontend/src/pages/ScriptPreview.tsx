@@ -774,7 +774,7 @@ export default function ScriptPreview() {
   }
 
   return (
-    <div style={{ fontFamily: 'var(--font-family)', display: 'flex', flexDirection: 'column', height: 'calc(100vh - 80px)' }}>
+    <div style={{ fontFamily: 'var(--font-family)', display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
       <Breadcrumb
         className="mb-4 text-xs"
         items={[

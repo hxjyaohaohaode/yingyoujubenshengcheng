@@ -80,6 +80,68 @@ class StorageService:
         )
         await self.db.commit()
 
+    async def clear_emotion_curves(self, project_id: str):
+        await self.db.execute(
+            text("DELETE FROM emotion_curves WHERE project_id = :pid"),
+            {"pid": project_id},
+        )
+        await self.db.commit()
+
+    async def create_emotion_curve(self, project_id: str, point: dict):
+        now = _now_expr()
+        curve_id = str(uuid.uuid4())
+        await self.db.execute(
+            text(
+                f"INSERT INTO emotion_curves (id, project_id, chapter_number, section_number, "
+                f"emotion_value, chapter_label, event_description, conflict_level, scene_count, "
+                f"timestamp, created_at) VALUES "
+                f"(:id, :pid, :cnum, :snum, :val, :label, :desc, :conflict, :sc, "
+                f":ts, {now})"
+            ),
+            {
+                "id": curve_id, "pid": project_id,
+                "cnum": point.get("chapter_number", point.get("chapterNumber", 0)),
+                "snum": point.get("section_number", point.get("sectionNumber", 0)),
+                "val": point.get("emotion_value", point.get("emotionValue", 5)),
+                "label": point.get("chapter_label", point.get("chapterLabel", "")),
+                "desc": point.get("event_description", point.get("eventDescription", "")),
+                "conflict": point.get("conflict_level", point.get("conflictLevel", 5)),
+                "sc": point.get("scene_count", point.get("sceneCount", 1)),
+                "ts": point.get("timestamp", datetime.now().isoformat()),
+            },
+        )
+        await self.db.commit()
+        return curve_id
+
+    async def get_emotion_curves(self, project_id: str) -> list[dict]:
+        result = await self.db.execute(
+            text(
+                "SELECT * FROM emotion_curves WHERE project_id = :project_id "
+                "ORDER BY chapter_number, section_number"
+            ),
+            {"project_id": project_id},
+        )
+        rows = result.fetchall()
+        cols = result.keys()
+        return [dict(zip(cols, row)) for row in rows]
+
+    async def update_emotion_curve(self, project_id: str, curve_id: str, updates: dict):
+        now = _now_expr()
+        set_clauses = []
+        params = {"pid": project_id, "cid": curve_id}
+        for key, val in updates.items():
+            set_clauses.append(f"{key} = :{key}")
+            params[key] = val
+        if set_clauses:
+            await self.db.execute(
+                text(
+                    f"UPDATE emotion_curves SET {', '.join(set_clauses)}, updated_at = {now} "
+                    f"WHERE project_id = :pid AND id = :cid"
+                ),
+                params,
+            )
+            await self.db.commit()
+
     async def lock_layer0(self, project_id: str, key: str):
         pass
 

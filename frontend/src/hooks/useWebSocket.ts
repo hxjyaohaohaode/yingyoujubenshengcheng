@@ -60,18 +60,8 @@ export function useWebSocket(path: string, options: UseWebSocketOptions = {}) {
     if (!currentProject?.id || !mountedRef.current) return
 
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
-    const baseUrl = import.meta.env.VITE_API_BASE_URL
-      || (window.location.hostname === 'localhost' ? '/api' : 'https://yingyoujubenshengcheng.onrender.com/api')
-    const normalizedPath = path.replace(/^\/+|\/+$/g, '')
-    const wsTarget = normalizedPath || currentProject.id
-    let wsBase: string
-    if (baseUrl.startsWith('http')) {
-      const urlObj = new URL(baseUrl)
-      wsBase = `${protocol}://${urlObj.host}`
-    } else {
-      wsBase = `${protocol}://${window.location.host}`
-    }
-    const wsUrl = `${wsBase}/ws/${wsTarget}`
+    const host = window.location.host
+    const wsUrl = `${protocol}://${host}/ws/${currentProject.id}`
 
     try {
       const ws = new WebSocket(wsUrl)
@@ -84,6 +74,7 @@ export function useWebSocket(path: string, options: UseWebSocketOptions = {}) {
         setReconnecting(false)
         startHeartbeat(ws)
         updateAgentRef.current('系统', { status: 'idle' })
+        window.dispatchEvent(new CustomEvent('ws-reconnected', { detail: { projectId: currentProject?.id } }))
       }
 
       ws.onmessage = (event) => {

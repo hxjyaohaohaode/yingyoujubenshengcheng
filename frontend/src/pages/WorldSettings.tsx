@@ -228,7 +228,7 @@ export default function WorldSettings() {
   const lockedCount = Object.values(locks).filter(l => l.isLocked).length
 
   return (
-    <div style={{ fontFamily: 'var(--font-family)', height: '100%', overflow: 'auto' }}>
+    <div style={{ fontFamily: 'var(--font-family)', flex: 1, overflow: 'auto' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24, flexShrink: 0 }}>
         <div>
           <h2 className="section-title" style={{ fontSize: 24 }}>世界观与改编策略</h2>

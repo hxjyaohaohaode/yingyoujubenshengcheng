@@ -140,7 +140,7 @@ export default function AppLayout() {
   }
 
   return (
-    <AntLayout style={{ minHeight: '100vh', background: 'var(--color-bg)', overflow: 'auto' }}>
+    <AntLayout style={{ height: '100vh', background: 'var(--color-bg)', overflow: 'hidden' }}>
       <Sider
         trigger={null}
         collapsible
@@ -326,9 +326,9 @@ export default function AppLayout() {
           </div>
         </Header>
 
-        <Content style={{ padding: 0, display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1, overflow: 'auto' }}>
+        <Content style={{ padding: 0, display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
           <PipelineProgressBar />
-          <div style={{ padding: 24, minHeight: 0, display: 'flex', flexDirection: 'column', flex: 1 }}>
+          <div style={{ padding: 24, flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
             <Outlet />
           </div>
         </Content>

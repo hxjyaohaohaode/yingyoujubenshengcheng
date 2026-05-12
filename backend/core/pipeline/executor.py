@@ -735,6 +735,8 @@ class PipelineExecutor:
         "character_designer": "world_builder",
         "relation_network_designer": "character_designer",
         "foreshadow_designer": "world_builder",
+        "foreshadow_reaction": "foreshadow_designer",
+        "wow_plan_designer": "foreshadow_designer",
         "chapter_outliner": "world_builder",
         "outline_writer": "world_builder",
         "scene_writer": "world_builder",
@@ -848,6 +850,8 @@ class PipelineExecutor:
         "character_designer": ["world_builder"],
         "relation_network_designer": ["character_designer"],
         "foreshadow_designer": ["world_builder", "character_designer"],
+        "foreshadow_reaction": ["foreshadow_designer"],
+        "wow_plan_designer": ["foreshadow_designer", "foreshadow_reaction"],
         "chapter_outliner": ["world_builder", "character_designer", "foreshadow_designer"],
         "scene_writer": ["world_builder", "character_designer", "chapter_outliner"],
         "choice_designer": ["chapter_outliner", "scene_writer"],
@@ -891,7 +895,13 @@ class PipelineExecutor:
             elif flag_key == "layer0_foreshadow_recovery_audit_built":
                 flag_key = "layer5_foreshadow_audit_built"
 
-            if not state.result_data.get(flag_key):
+            found = state.result_data.get(flag_key)
+            if not found:
+                for k in state.result_data:
+                    if k.endswith(f"_{dep_skill}_built") and state.result_data.get(k):
+                        found = True
+                        break
+            if not found:
                 missing.append(dep_skill)
 
         if missing:
@@ -998,8 +1008,27 @@ class PipelineExecutor:
                         await self._notify_data_changed(project_id, "character_created",
                                                          {"entity_id": c.get("name", "")})
                 else:
-                    logger.warning("character_designer 未生成有效角色数据")
-                    raise RuntimeError("character_designer 未生成有效角色数据，无法继续流水线")
+                    logger.warning("character_designer JSON解析失败，尝试从原始文本提取角色")
+                    raw_text = str(text) if text else ""
+                    if len(raw_text) > 100:
+                        extracted = self._extract_characters_from_text(raw_text)
+                        if extracted and len(extracted) > 0:
+                            await self.storage.clear_characters(project_id)
+                            await self.storage.create_characters_bulk(project_id, extracted)
+                            await self.state_machine.update_result_data(project_id, "characters", extracted)
+                            await self.state_machine.update_result_data(project_id, "layer0_characters_built", True)
+                            for c in extracted:
+                                await self._notify_data_changed(project_id, "character_created",
+                                                                 {"entity_id": c.get("name", "")})
+                        else:
+                            logger.warning("character_designer 文本提取也失败，使用最小角色数据")
+                            fallback_chars = [{"name": "主角", "role_type": "protagonist", "core_goal": "待补充", "core_fear": "待补充"}]
+                            await self.storage.clear_characters(project_id)
+                            await self.storage.create_characters_bulk(project_id, fallback_chars)
+                            await self.state_machine.update_result_data(project_id, "characters", fallback_chars)
+                            await self.state_machine.update_result_data(project_id, "layer0_characters_built", True)
+                    else:
+                        raise RuntimeError("character_designer 未生成有效角色数据，无法继续流水线")
 
             elif skill == "foreshadow_designer":
                 text = data.get("foreshadows", data.get("foreshadow_designs", ""))
@@ -1018,8 +1047,26 @@ class PipelineExecutor:
                         await self._notify_data_changed(project_id, "foreshadow_created",
                                                          {"entity_id": fs.get("name", "")})
                 else:
-                    logger.warning("foreshadow_designer 未生成有效伏笔数据")
-                    raise RuntimeError("foreshadow_designer 未生成有效伏笔数据，无法继续流水线")
+                    logger.warning("foreshadow_designer JSON解析失败，尝试从原始文本提取")
+                    raw_text = str(text) if text else ""
+                    if len(raw_text) > 100:
+                        extracted = self._extract_foreshadows_from_text(raw_text)
+                        if extracted and len(extracted) > 0:
+                            await self.storage.clear_foreshadows(project_id)
+                            await self.storage.create_foreshadows_bulk(project_id, extracted)
+                            await self.state_machine.update_result_data(project_id, "foreshadows", extracted)
+                            await self.state_machine.update_result_data(project_id, "layer0_foreshadows_built", True)
+                            for fs in extracted:
+                                await self._notify_data_changed(project_id, "foreshadow_created",
+                                                                 {"entity_id": fs.get("name", "")})
+                        else:
+                            logger.warning("foreshadow_designer 文本提取也失败，使用空伏笔列表继续")
+                            await self.state_machine.update_result_data(project_id, "foreshadows", [])
+                            await self.state_machine.update_result_data(project_id, "layer0_foreshadows_built", True)
+                    else:
+                        logger.warning("foreshadow_designer 原始文本过短，使用空伏笔列表")
+                        await self.state_machine.update_result_data(project_id, "foreshadows", [])
+                        await self.state_machine.update_result_data(project_id, "layer0_foreshadows_built", True)
 
             elif skill in ("outline_writer", "chapter_outliner"):
                 text = data.get("outline", data.get("chapters", data.get("outlines", "")))
@@ -1041,6 +1088,7 @@ class PipelineExecutor:
                         await self._notify_data_changed(project_id, "chapter_created",
                                                          {"entity_id": ch.get("title", ch.get("标题", ""))})
                     await self._persist_chapter_sections(project_id, ch_list)
+                    await self._populate_emotion_curves(project_id)
                 else:
                     logger.warning("chapter_outliner 未生成有效章节数据，尝试从原始文本提取")
                     raw_text = str(text) if text else ""
@@ -1150,6 +1198,22 @@ class PipelineExecutor:
                 await self.state_machine.update_result_data(project_id, "layer0_foreshadow_reaction_built", True)
                 await self._notify_data_changed(project_id, "foreshadow_updated", {})
 
+            elif skill == "wow_plan_designer":
+                wows = data.get("wows", [])
+                if wows:
+                    await self.state_machine.update_result_data(project_id, "wow_plans", wows)
+                    try:
+                        existing_fs = await self.storage.get_foreshadows(project_id)
+                        for fs in existing_fs:
+                            await self.storage.update_foreshadow(project_id, fs["id"], {
+                                "wow_plans": wows,
+                            })
+                    except Exception:
+                        pass
+                await self.state_machine.update_result_data(project_id, "layer0_wow_plan_built", True)
+                await self._notify_data_changed(project_id, "wow_plans_created", {"count": len(wows)})
+                await self._populate_emotion_curves(project_id)
+
             elif skill == "rag_retriever":
                 next_step = data.get("next_step", data)
                 await self.state_machine.update_result_data(project_id, "next_step", next_step)
@@ -1209,6 +1273,80 @@ class PipelineExecutor:
                 "estimated_word_count": 3000,
             })
         return chapters if chapters else None
+
+    def _extract_characters_from_text(self, text: str) -> list[dict] | None:
+        import re
+        characters = []
+        name_pattern = re.compile(r'(?:姓名|名字|角色名)[：:]\s*([^\n]+)')
+        role_pattern = re.compile(r'(?:角色定位|类型|身份)[：:]\s*([^\n]+)')
+        goal_pattern = re.compile(r'(?:核心目标|动机|目标)[：:]\s*([^\n]+)')
+        blocks = re.split(r'\n\s*\n', text)
+        for block in blocks:
+            name_match = name_pattern.search(block)
+            if not name_match:
+                continue
+            name = name_match.group(1).strip()
+            if len(name) > 20:
+                continue
+            role_match = role_pattern.search(block)
+            goal_match = goal_pattern.search(block)
+            characters.append({
+                "name": name,
+                "role_type": role_match.group(1).strip() if role_match else "supporting",
+                "core_goal": goal_match.group(1).strip() if goal_match else "",
+                "core_fear": "",
+                "language_style": "",
+            })
+        return characters if characters else None
+
+    def _extract_foreshadows_from_text(self, text: str) -> list[dict] | None:
+        import re
+        fs_list = []
+        name_pattern = re.compile(r'(?:伏笔|线索)[：:]\s*([^\n]+)')
+        plant_pattern = re.compile(r'(?:埋设位置|埋设)[：:]\s*([^\n]+)')
+        reveal_pattern = re.compile(r'(?:回收)[：:]\s*([^\n]+)')
+        blocks = re.split(r'\n\s*\n', text)
+        for i, block in enumerate(blocks):
+            name_match = name_pattern.search(block)
+            if not name_match:
+                continue
+            name = name_match.group(1).strip()
+            if len(name) > 30:
+                continue
+            plant_match = plant_pattern.search(block)
+            reveal_match = reveal_pattern.search(block)
+            fs_list.append({
+                "name": name,
+                "description": block[:200].strip(),
+                "plant_chapter": plant_match.group(1).strip() if plant_match else 1,
+                "reveal_chapter": reveal_match.group(1).strip() if reveal_match else "",
+                "status": "planted",
+            })
+        return fs_list if fs_list else None
+
+    async def _populate_emotion_curves(self, project_id: str):
+        try:
+            chapters = await self.storage.get_chapter_outlines(project_id)
+            if not chapters:
+                return
+            await self.storage.clear_emotion_curves(project_id)
+            for chapter in chapters:
+                ch_num = chapter.get("chapter_number", 0)
+                ch_title = chapter.get("title", "")
+                emotion_val = chapter.get("emotion_target", 5)
+                await self.storage.create_emotion_curve(project_id, {
+                    "chapter_number": ch_num,
+                    "section_number": 0,
+                    "emotion_value": emotion_val,
+                    "chapter_label": ch_title,
+                    "event_description": chapter.get("core_conflict", chapter.get("summary", "")),
+                    "conflict_level": 5,
+                    "scene_count": 1,
+                })
+            await self._notify_data_changed(project_id, "emotion_curve_created", {"chapters_processed": len(chapters)})
+            logger.info("情感曲线自动填充完成: 项目=%s, 章节数=%d", project_id, len(chapters))
+        except Exception as e:
+            logger.warning("情感曲线填充失败（非致命）: %s", str(e))
 
     async def _persist_chapter_sections(self, project_id: str, chapters: list[dict]):
         try:
@@ -1692,6 +1830,18 @@ class PipelineExecutor:
                 **data,
                 "timestamp": datetime.now(UTC).isoformat(),
             })
+            if event_type in ("character_created", "character_updated", "character_deleted",
+                              "world_config_updated",
+                              "scene_created", "scene_updated", "scene_deleted", "scene_finalized",
+                              "chapter_created", "chapter_updated", "chapter_deleted",
+                              "foreshadow_created", "foreshadow_updated", "foreshadow_deleted",
+                              "relation_created", "relation_updated", "relation_deleted",
+                              "choice_designs_created"):
+                await self._ws().broadcast_to_project(project_id, {
+                    "type": "data_sync_required",
+                    "event_type": event_type,
+                    "timestamp": datetime.now(UTC).isoformat(),
+                })
         except Exception:
             pass
 

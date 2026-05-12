@@ -5,6 +5,7 @@ import { useAgentStore } from '../stores/agentStore'
 import { useAITaskStore } from '../stores/aiTaskStore'
 import { useQueryClient } from '@tanstack/react-query'
 import { eventBus, DataEvents } from './eventBus'
+import { api } from '../api/client'
 
 export default function GlobalWebSocket() {
   const currentProject = useProjectStore((s) => s.currentProject)
@@ -19,6 +20,22 @@ export default function GlobalWebSocket() {
   const queryClientRef = useRef(queryClient)
   queryClientRef.current = queryClient
   const prevProjectIdRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    const onReconnected = () => {
+      if (!currentProject?.id) return
+      api.get<{ status: string; current_phase: number; current_step: number; template: string; error_message: string; task_results: any[] }>(
+        `/projects/${currentProject.id}/pipeline/status`
+      ).then(data => {
+        if (!data || data.status === 'not_initialized') return
+        const isRunning = data.status === 'running'
+        setPipelineRunning(isRunning)
+        queryClientRef.current.invalidateQueries({ queryKey: ['dashboard'] })
+      }).catch(() => {})
+    }
+    window.addEventListener('ws-reconnected', onReconnected)
+    return () => window.removeEventListener('ws-reconnected', onReconnected)
+  }, [currentProject?.id, setPipelineRunning])
 
   const { connected } = useWebSocket(currentProject?.id || '', {
     onMessage(data: any) {
@@ -233,6 +250,15 @@ export default function GlobalWebSocket() {
         case 'world_config_updated':
           queryClientRef.current.invalidateQueries({ queryKey: ['dashboard'] })
           eventBus.emit(DataEvents.WORLD_CONFIG_UPDATED, data)
+          break
+
+        case 'data_sync_required':
+          queryClientRef.current.invalidateQueries({ queryKey: ['dashboard'] })
+          queryClientRef.current.invalidateQueries({ queryKey: ['scenes'] })
+          queryClientRef.current.invalidateQueries({ queryKey: ['chapters'] })
+          queryClientRef.current.invalidateQueries({ queryKey: ['characters'] })
+          queryClientRef.current.invalidateQueries({ queryKey: ['foreshadows'] })
+          queryClientRef.current.invalidateQueries({ queryKey: ['relations'] })
           break
 
         case 'notification':

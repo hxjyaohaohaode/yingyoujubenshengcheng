@@ -609,7 +609,7 @@ export default function Dashboard() {
   const recentActivity = dashboardData?.recent_activity
 
   return (
-    <div style={{ fontFamily: 'var(--font-family)', height: '100%', overflow: 'auto' }}>
+    <div style={{ fontFamily: 'var(--font-family)', flex: 1, overflow: 'auto' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24, flexShrink: 0 }}>
         <div>
           <h2 className="section-title" style={{ fontSize: 24 }}>项目总览</h2>

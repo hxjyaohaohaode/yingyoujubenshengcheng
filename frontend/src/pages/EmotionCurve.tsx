@@ -377,7 +377,7 @@ export default function EmotionCurve() {
   const allEmotionTargetsZero = chapters.length > 0 && chapters.every(ch => ch.emotion_target === 0)
   const hasUndesignedChapters = chapters.length > 0 && allEmotionTargetsZero
   return (
-    <div style={{ fontFamily: 'var(--font-family)', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+    <div style={{ fontFamily: 'var(--font-family)', display: 'flex', flexDirection: 'column', flex: 1, overflow: 'auto' }}>
       {fetchError && (
         <div style={{ background: '#fff3cd', border: '1px solid #ffc107', borderRadius: 8, padding: '8px 14px', marginBottom: 8, fontSize: 13, color: '#856404', flexShrink: 0 }}>
           ⚠ {fetchError}

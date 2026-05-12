@@ -45,6 +45,12 @@ phases:
         output_to: layer0
         cost_profile: quality
         timeout: 600
+      - agent: creative
+        skill: wow_plan_designer
+        input_from: [layer0]
+        output_to: layer0
+        cost_profile: quality
+        timeout: 600
 
   - name: 章节大纲
     human_gate: false

@@ -776,7 +776,7 @@ function ScriptVizInner() {
   }
 
   return (
-    <div ref={containerRef} style={{ fontFamily: 'var(--font-family)', display: 'flex', flexDirection: 'column', height: '100%' }}>
+    <div ref={containerRef} style={{ fontFamily: 'var(--font-family)', display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24, flexShrink: 0 }}>
         <div>
           <h2 className="section-title" style={{ fontSize: 24 }}>剧本可视化</h2>

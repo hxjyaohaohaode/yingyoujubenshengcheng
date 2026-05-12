@@ -889,7 +889,7 @@ export default function Foreshadows() {
   const isAiGenerating = aiGenerating && aiGenerateTaskId
 
   return (
-      <div style={{ fontFamily: 'var(--font-family)', display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <div style={{ fontFamily: 'var(--font-family)', display: 'flex', flexDirection: 'column', flex: 1, overflow: 'auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexShrink: 0 }}>
           <div>
             <h2 className="section-title" style={{ fontSize: 24 }}>选项后果</h2>
