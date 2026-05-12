@@ -2,7 +2,7 @@ services:
   - type: web
     name: script-engine-backend
     runtime: python
-    rootDir: backend
+    rootDir: script-engine/backend
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /api/health
@@ -16,7 +16,7 @@ services:
       - key: APP_ENV
         value: production
       - key: CORS_ORIGINS
-        value: "https://yingyoujubenshengcheng-frontend.onrender.com"
+        value: "https://script-engine-frontend.onrender.com"
       - key: DATABASE_URL
         fromDatabase:
           name: script-engine-db
@@ -30,16 +30,11 @@ services:
           type: redis
           name: script-engine-redis
           property: connectionString
-      # 注意：以下API密钥需要在Render Dashboard中手动设置
-      # - key: DEEPSEEK_API_KEY
-      #   value: your-deepseek-api-key
-      # - key: MIMO_API_KEY
-      #   value: your-mimo-api-key
 
   - type: web
     name: script-engine-frontend
     runtime: static
-    rootDir: frontend
+    rootDir: script-engine/frontend
     buildCommand: npm install && npm run build
     staticPublishPath: dist
     autoDeploy: true
@@ -59,11 +54,10 @@ services:
         name: Cache-Control
         value: max-age=0, s-maxage=86400
 
-  # Celery Worker - 处理异步任务
   - type: worker
     name: script-engine-worker
     runtime: python
-    rootDir: backend
+    rootDir: script-engine/backend
     buildCommand: pip install -r requirements.txt
     startCommand: celery -A tasks worker --loglevel=info
     autoDeploy: true
@@ -83,11 +77,10 @@ services:
           name: script-engine-redis
           property: connectionString
 
-  # Celery Beat - 定时任务调度
   - type: worker
     name: script-engine-beat
     runtime: python
-    rootDir: backend
+    rootDir: script-engine/backend
     buildCommand: pip install -r requirements.txt
     startCommand: celery -A tasks beat --loglevel=info
     autoDeploy: true
