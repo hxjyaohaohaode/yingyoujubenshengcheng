@@ -43,3 +43,14 @@ htmlcov/
 .mypy_cache/
 
 redis-data/
+
+# 开发文档（不上传到生产仓库）
+完整技术方案.md
+开发规格书.md
+重构指南.md
+API文档.md
+Trae提示词文档.md
+docs/
+
+# Trae IDE 规格文件
+.trae/
