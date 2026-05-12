@@ -2,7 +2,7 @@ services:
   - type: web
     name: script-engine-backend
     runtime: python
-    rootDir: script-engine/backend
+    rootDir: backend
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /api/health
@@ -34,7 +34,7 @@ services:
   - type: web
     name: script-engine-frontend
     runtime: static
-    rootDir: script-engine/frontend
+    rootDir: frontend
     buildCommand: npm install && npm run build
     staticPublishPath: dist
     autoDeploy: true
@@ -57,7 +57,7 @@ services:
   - type: worker
     name: script-engine-worker
     runtime: python
-    rootDir: script-engine/backend
+    rootDir: backend
     buildCommand: pip install -r requirements.txt
     startCommand: celery -A tasks worker --loglevel=info
     autoDeploy: true
@@ -80,7 +80,7 @@ services:
   - type: worker
     name: script-engine-beat
     runtime: python
-    rootDir: script-engine/backend
+    rootDir: backend
     buildCommand: pip install -r requirements.txt
     startCommand: celery -A tasks beat --loglevel=info
     autoDeploy: true
