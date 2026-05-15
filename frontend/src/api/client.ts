@@ -1,5 +1,5 @@
 export const API_BASE = import.meta.env.VITE_API_BASE_URL
-  || (window.location.hostname === 'localhost' ? '/api' : 'https://script-engine-backend.onrender.com/api')
+  || (window.location.hostname === 'localhost' ? '/api' : 'https://yingyoujubenshengcheng.onrender.com/api')
 
 class ApiError extends Error {
   status: number
