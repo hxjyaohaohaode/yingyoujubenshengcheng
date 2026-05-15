@@ -9,7 +9,6 @@ import {
   HomeOutlined, SunOutlined, MoonOutlined,
   BulbOutlined, ApartmentOutlined,
   SafetyOutlined, PlayCircleOutlined, SendOutlined,
-  FileTextOutlined,
   ThunderboltOutlined,
   LineChartOutlined, EyeOutlined,
   MenuFoldOutlined, MenuUnfoldOutlined,
@@ -52,6 +51,7 @@ export default function AppLayout() {
   const isDark = useThemeStore((s) => s.isDark)
   const toggleTheme = useThemeStore((s) => s.toggle)
   const [collapsed, setCollapsed] = useState(false)
+  const [headerCollapsed, setHeaderCollapsed] = useState(false)
   const [createModalOpen, setCreateModalOpen] = useState(false)
   const [llmModalOpen, setLlmModalOpen] = useState(false)
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
@@ -93,8 +93,7 @@ export default function AppLayout() {
     const p = projects.find(p => p.id === projectId)
     if (p) {
       setCurrentProject(p)
-      // 直接刷新页面，由页面初始化加载新数据，避免触发事件导致请求竞争
-      window.location.href = '/'
+      eventBus.emit(DataEvents.PROJECT_SWITCHED)
     }
   }
 
@@ -205,43 +204,43 @@ export default function AppLayout() {
           inlineCollapsed={collapsed}
         />
 
-        {!collapsed && (
-          <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '12px 16px', borderTop: '1px solid var(--color-border)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4 }}>
+        <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: collapsed ? '12px 8px' : '12px 24px', borderTop: '1px solid var(--color-border)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: collapsed ? 'center' : 'space-between', gap: collapsed ? 0 : 4, flexDirection: collapsed ? 'column' : 'row' }}>
               <Tooltip title={isDark ? '浅色模式' : '深色模式'}>
                 <Button type="text" icon={isDark ? <SunOutlined /> : <MoonOutlined />} onClick={toggleTheme} style={{ color: 'var(--color-muted)' }} />
               </Tooltip>
               <Tooltip title="API 配置">
                 <Button type="text" icon={<RobotOutlined />} onClick={() => setLlmModalOpen(true)} style={{ color: 'var(--color-muted)' }} />
               </Tooltip>
-              <Tooltip title="新建项目">
-                <Button type="text" icon={<FileTextOutlined />} onClick={() => setCreateModalOpen(true)} style={{ color: 'var(--color-muted)' }} />
-              </Tooltip>
             </div>
           </div>
-        )}
       </Sider>
 
       <AntLayout style={{ marginLeft: collapsed ? 80 : 250, transition: 'margin-left 0.2s', background: 'transparent' }}>
         <Header style={{
           background: 'var(--color-surface)',
           borderBottom: '1px solid var(--color-border)',
-          padding: '0 24px',
+          padding: '0 16px',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          height: 56,
+          height: headerCollapsed ? 32 : 40,
+          minHeight: headerCollapsed ? 32 : 40,
           position: 'sticky',
           top: 0,
           zIndex: 20,
+          transition: 'height 0.2s, min-height 0.2s',
+          overflow: 'hidden',
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--color-ink)' }}>
-              {NAV_ITEMS.find(n => n.key === currentPath || (n.key !== '/' && currentPath.startsWith(n.key)))?.label?.replace(/^\d+\s+/, '') || ''}
+          {!headerCollapsed && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-ink)' }}>
+                {NAV_ITEMS.find(n => n.key === currentPath || (n.key !== '/' && currentPath.startsWith(n.key)))?.label?.replace(/^\d+\s+/, '') || ''}
+              </div>
             </div>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            {currentProject ? (
+          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
+            {!headerCollapsed && currentProject && (
               <Dropdown
                 menu={{
                   items: [
@@ -301,18 +300,19 @@ export default function AppLayout() {
                 overlayStyle={{ maxHeight: 400, overflow: 'auto' }}
               >
                 <div style={{
-                  display: 'flex', alignItems: 'center', gap: 8,
+                  display: 'flex', alignItems: 'center', gap: 6,
                   background: 'var(--color-accent-soft)',
-                  borderRadius: 8, padding: '4px 14px',
+                  borderRadius: 6, padding: '2px 10px',
                   cursor: 'pointer',
                 }}>
-                  <ThunderboltOutlined style={{ color: 'var(--color-accent)', fontSize: 13 }} />
-                  <span style={{ fontSize: 13, color: 'var(--color-accent)', fontWeight: 600, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <ThunderboltOutlined style={{ color: 'var(--color-accent)', fontSize: 12 }} />
+                  <span style={{ fontSize: 12, color: 'var(--color-accent)', fontWeight: 600, maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {currentProject.name}
                   </span>
                 </div>
               </Dropdown>
-            ) : (
+            )}
+            {!headerCollapsed && !currentProject && (
               <Button
                 type="primary"
                 size="small"
@@ -323,6 +323,15 @@ export default function AppLayout() {
                 新建项目
               </Button>
             )}
+            <Tooltip title={headerCollapsed ? '展开顶栏' : '收起顶栏'}>
+              <Button
+                type="text"
+                size="small"
+                icon={headerCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+                onClick={() => setHeaderCollapsed(!headerCollapsed)}
+                style={{ color: 'var(--color-muted)', fontSize: 12 }}
+              />
+            </Tooltip>
           </div>
         </Header>
 

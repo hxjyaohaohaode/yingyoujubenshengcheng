@@ -1,14 +1,16 @@
-const API_BASE = import.meta.env.VITE_API_BASE_URL
-  || (window.location.hostname === 'localhost' ? '/api' : 'https://yingyoujubenshengcheng.onrender.com/api')
+export const API_BASE = import.meta.env.VITE_API_BASE_URL
+  || (window.location.hostname === 'localhost' ? '/api' : 'https://script-engine-backend.onrender.com/api')
 
 class ApiError extends Error {
   status: number
   detail: string
-  constructor(status: number, detail: string) {
+  silent: boolean
+  constructor(status: number, detail: string, silent = false) {
     super(detail)
     this.name = 'ApiError'
     this.status = status
     this.detail = detail
+    this.silent = silent
   }
 }
 
@@ -46,7 +48,7 @@ async function request<T>(url: string, options?: RequestInit & { signal?: AbortS
     })
   } catch (e: any) {
     if (e?.name === 'AbortError' || signal?.aborted) {
-      const abortErr = new Error('Request aborted') as any
+      const abortErr = new ApiError(0, 'Request aborted', true)
       abortErr.name = 'AbortError'
       abortErr.silent = true
       throw abortErr
@@ -361,10 +363,32 @@ export const projectsApi = {
   create: (data: ProjectCreatePayload) => api.post<Project>('/projects', data),
   update: (id: string, data: Partial<Project> & { config?: Partial<ProjectConfigSchema> }) => api.put<Project>(`/projects/${id}`, data),
   delete: (id: string) => api.delete<void>(`/projects/${id}`),
-  recommendConfig: (data: { target_word_count: number; genre?: string; work_mode?: string; player_count?: string }) =>
-    api.post<RecommendConfigResponse>('/projects/recommend-config', data),
-  validateConfig: (data: { target_word_count: number; chapter_count: number; min_words_per_chapter: number; max_words_per_chapter: number; target_ending_count: number; max_branch_depth: number }) =>
-    api.post<ValidateConfigResponse>('/projects/validate-config', data),
+  recommendConfig: (
+    data: {
+      target_word_count: number
+      genre?: string
+      sub_genre?: string
+      core_contradiction?: string
+      theme?: string
+      tone?: string
+      narrative_pov?: string
+      style?: string
+      work_mode?: string
+      player_count?: string
+    },
+    signal?: AbortSignal,
+  ) => api.post<RecommendConfigResponse>('/projects/recommend-config', data, signal),
+  validateConfig: (
+    data: {
+      target_word_count: number
+      chapter_count: number
+      min_words_per_chapter: number
+      max_words_per_chapter: number
+      target_ending_count: number
+      max_branch_depth: number
+    },
+    signal?: AbortSignal,
+  ) => api.post<ValidateConfigResponse>('/projects/validate-config', data, signal),
 }
 
 // ========== Characters API ==========
@@ -568,4 +592,85 @@ export const pipelineApi = {
     api.get<{ templates: { name: string; description: string; phases: number }[] }>(`/pipeline/templates`),
   getTemplate: (name: string) =>
     api.get<{ name: string; description: string; phases: Array<{ name: string; human_gate: boolean; steps: Array<{ agent: string; skill: string }> }> }>(`/templates/${encodeURIComponent(name)}`),
+}
+
+// ========== Search API ==========
+
+export interface KnowledgeCard {
+  entity_name: string
+  entity_type: string
+  summary: string
+  key_facts: string[]
+  sources: string[]
+}
+
+export interface SearchResult {
+  status: string
+  intent: Record<string, unknown>
+  knowledge_cards: KnowledgeCard[]
+}
+
+export const searchApi = {
+  search: (projectId: string, query: string, signal?: AbortSignal) =>
+    api.post<SearchResult>(`/projects/${projectId}/search`, { user_query: query }, signal),
+  status: (projectId: string) =>
+    api.get<{ cached_count: number; last_search: string | null }>(`/projects/${projectId}/search/status`),
+  searchStream: (projectId: string, query: string): Promise<ReadableStream<Uint8Array>> => {
+    const streamUrl = `${API_BASE}/projects/${projectId}/search/stream`
+    return fetch(streamUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_query: query }),
+    }).then(res => {
+      if (!res.ok) throw new Error(`搜索请求失败: HTTP ${res.status}`)
+      if (!res.body) throw new Error('浏览器不支持流式读取')
+      return res.body
+    })
+  },
+  searchQuick: (projectId: string, query: string) =>
+    api.post<{ status: string; query: string; summary: string; sources: { title: string; url: string; snippet: string; source: string }[]; message?: string }>(
+      `/projects/${projectId}/search/quick`, { user_query: query }
+    ),
+}
+
+// ========== Upload API ==========
+
+export interface UploadFileResult {
+  status: string
+  file_id: string
+  filename: string
+  file_type: string
+  size: number
+  pages: number
+  preview: string
+}
+
+export interface UploadedFile {
+  id: string
+  filename: string
+  file_type: string
+  file_size: number
+  page_count: number
+  text_preview: string
+  created_at: string
+}
+
+export const uploadApi = {
+  upload: async (projectId: string, file: File): Promise<UploadFileResult> => {
+    const formData = new FormData()
+    formData.append('file', file)
+    const res = await fetch(`${API_BASE}/projects/${projectId}/upload`, {
+      method: 'POST',
+      body: formData,
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: '上传失败' }))
+      throw new ApiError(res.status, err.detail || '上传失败')
+    }
+    return res.json()
+  },
+  list: (projectId: string) =>
+    api.get<{ files: UploadedFile[] }>(`/projects/${projectId}/uploads`),
+  delete: (projectId: string, fileId: string) =>
+    api.delete<{ status: string }>(`/projects/${projectId}/uploads/${fileId}`),
 }

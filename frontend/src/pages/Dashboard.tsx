@@ -13,12 +13,14 @@ import {
 import { PieChart, Pie, Cell, ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip } from 'recharts'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useProjectStore } from '../stores/projectStore'
-import { useAgentStore } from '../stores/agentStore'
+import { useAgentStore, AGENT_NAME_MAP } from '../stores/agentStore'
 import { useAITaskStore } from '../stores/aiTaskStore'
 import { api } from '../api/client'
 import { eventBus, DataEvents } from '../services/eventBus'
 import EmotionChart from '../components/EmotionChart'
 import ProjectSelector from '../components/ProjectSelector'
+import FileUpload from '../components/FileUpload'
+import KnowledgeSearch from '../components/KnowledgeSearch'
 
 const PHASE_COLORS = ['#3366FF', '#6366f1', '#06B6D4', '#10B981', '#F59E0B', '#f97316', '#EF4444']
 const PHASE_LABELS = ['世界观', '角色设计', '剧情大纲', '场景编写', '审核优化', '定稿导出']
@@ -219,7 +221,7 @@ function PipelineStatusCard() {
           background: isPipelineRunning ? 'var(--color-accent-soft)' :
                        pipeline?.status === 'completed' ? 'var(--color-success-soft)' :
                        pipeline?.status === 'waiting_human' ? 'var(--color-warning-soft)' :
-                       'linear-gradient(135deg, var(--color-accent-soft), #f0e6ff)',
+                       'linear-gradient(135deg, var(--color-accent-soft), var(--color-purple-soft))',
         }}>
           {isPipelineRunning ? <SyncOutlined spin style={{ color: 'var(--color-accent)' }} /> :
            pipeline?.status === 'completed' ? <CheckCircleOutlined style={{ color: 'var(--color-success)' }} /> :
@@ -228,10 +230,10 @@ function PipelineStatusCard() {
 
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--color-ink)' }}>
-            {isPipelineRunning ? '🚀 AI全自动生成中...' :
-             pipeline?.status === 'completed' ? '✅ 剧本生成完毕' :
-             pipeline?.status === 'waiting_human' ? '⏸ 等待确认' :
-             '🎬 一键全自动生成完整互动影游剧本'}
+            {isPipelineRunning ? 'AI全自动生成中...' :
+             pipeline?.status === 'completed' ? '剧本生成完毕' :
+             pipeline?.status === 'waiting_human' ? '等待确认' :
+             '一键全自动生成完整互动影游剧本'}
           </div>
           <div style={{ fontSize: 13, color: 'var(--color-muted)', marginTop: 4, lineHeight: 1.6 }}>
             {isPipelineRunning && pipeline
@@ -263,7 +265,7 @@ function PipelineStatusCard() {
               {pipeline.phases && pipeline.phases.length > 0 && (
                 <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
                   {pipeline.phases.map((ph, i) => {
-                    const icon = ph.status === 'completed' ? '✅' : ph.status === 'running' ? '🔄' : ph.status === 'failed' ? '❌' : '⏳'
+                    const icon = ph.status === 'completed' ? '完成' : ph.status === 'running' ? '运行中' : ph.status === 'failed' ? '失败' : '等待'
                     return (
                       <span key={i} style={{
                         fontSize: 11, padding: '2px 8px', borderRadius: 6,
@@ -276,7 +278,7 @@ function PipelineStatusCard() {
                       }}>
                         {icon} {ph.name}
                         {ph.status === 'running' && ph.currentStep > 0 && ` (${ph.currentStep}/${ph.steps})`}
-                        {ph.status === 'completed' && ` ✓`}
+                        {ph.status === 'completed' && ` 完成`}
                       </span>
                     )
                   })}
@@ -515,73 +517,51 @@ export default function Dashboard() {
     data: dashboardData, isLoading, isError, error, refetch, isFetching,
   } = useQuery<DashboardResponse>({
     queryKey: ['dashboard', currentProject?.id],
-    queryFn: ({ signal }) => api.get<DashboardResponse>(`/projects/${currentProject!.id}/dashboard`, signal),
+    queryFn: () => api.get<DashboardResponse>(`/projects/${currentProject!.id}/dashboard`),
     enabled: !!currentProject?.id,
     staleTime: 30_000,
     refetchInterval: 30_000,
-    retry: (failureCount, err: any) => {
-      if (err?.name === 'AbortError') return false
-      return failureCount < 2
-    },
-    refetchOnWindowFocus: (query) => {
-      return query.state.error?.name !== 'AbortError'
-    },
+    retry: 1,
   })
 
   const busyAgents = agents.filter(a => a.status === 'busy').length
 
   useEffect(() => {
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null
+    const invalidateDashboard = () => {
+      if (debounceTimer) clearTimeout(debounceTimer)
+      debounceTimer = setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ['dashboard', currentProject?.id] })
+      }, 300)
+    }
+    const invalidateAll = () => {
+      if (debounceTimer) clearTimeout(debounceTimer)
+      debounceTimer = setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      }, 300)
+    }
     const unsubs = [
-      eventBus.on(DataEvents.SCENE_CREATED, () => {
-        queryClient.invalidateQueries({ queryKey: ['dashboard', currentProject?.id] })
-      }),
-      eventBus.on(DataEvents.SCENE_UPDATED, () => {
-        queryClient.invalidateQueries({ queryKey: ['dashboard', currentProject?.id] })
-      }),
-      eventBus.on(DataEvents.SCENE_FINALIZED, () => {
-        queryClient.invalidateQueries({ queryKey: ['dashboard', currentProject?.id] })
-      }),
-      eventBus.on(DataEvents.CHAPTER_CREATED, () => {
-        queryClient.invalidateQueries({ queryKey: ['dashboard', currentProject?.id] })
-      }),
-      eventBus.on(DataEvents.CHAPTER_UPDATED, () => {
-        queryClient.invalidateQueries({ queryKey: ['dashboard', currentProject?.id] })
-      }),
-      eventBus.on(DataEvents.CHARACTER_CREATED, () => {
-        queryClient.invalidateQueries({ queryKey: ['dashboard', currentProject?.id] })
-      }),
-      eventBus.on(DataEvents.CHARACTER_UPDATED, () => {
-        queryClient.invalidateQueries({ queryKey: ['dashboard', currentProject?.id] })
-      }),
-      eventBus.on(DataEvents.CHARACTER_DELETED, () => {
-        queryClient.invalidateQueries({ queryKey: ['dashboard', currentProject?.id] })
-      }),
-      eventBus.on(DataEvents.FORESHADOW_CREATED, () => {
-        queryClient.invalidateQueries({ queryKey: ['dashboard', currentProject?.id] })
-      }),
-      eventBus.on(DataEvents.FORESHADOW_UPDATED, () => {
-        queryClient.invalidateQueries({ queryKey: ['dashboard', currentProject?.id] })
-      }),
-      eventBus.on(DataEvents.FORESHADOW_DELETED, () => {
-        queryClient.invalidateQueries({ queryKey: ['dashboard', currentProject?.id] })
-      }),
-      eventBus.on(DataEvents.WORLD_CONFIG_UPDATED, () => {
-        queryClient.invalidateQueries({ queryKey: ['dashboard', currentProject?.id] })
-      }),
-      eventBus.on(DataEvents.AI_GENERATION_COMPLETED, () => {
-        queryClient.invalidateQueries({ queryKey: ['dashboard', currentProject?.id] })
-      }),
-      eventBus.on(DataEvents.AI_AUDIT_COMPLETED, () => {
-        queryClient.invalidateQueries({ queryKey: ['dashboard', currentProject?.id] })
-      }),
-      eventBus.on(DataEvents.PIPELINE_STATUS_CHANGED, () => {
-        queryClient.invalidateQueries({ queryKey: ['dashboard', currentProject?.id] })
-      }),
-      eventBus.on(DataEvents.PROJECT_SWITCHED, () => {
-        queryClient.invalidateQueries({ queryKey: ['dashboard', currentProject?.id] })
-      }),
+      eventBus.on(DataEvents.SCENE_CREATED, invalidateDashboard),
+      eventBus.on(DataEvents.SCENE_UPDATED, invalidateDashboard),
+      eventBus.on(DataEvents.SCENE_FINALIZED, invalidateDashboard),
+      eventBus.on(DataEvents.CHAPTER_CREATED, invalidateDashboard),
+      eventBus.on(DataEvents.CHAPTER_UPDATED, invalidateDashboard),
+      eventBus.on(DataEvents.CHARACTER_CREATED, invalidateDashboard),
+      eventBus.on(DataEvents.CHARACTER_UPDATED, invalidateDashboard),
+      eventBus.on(DataEvents.CHARACTER_DELETED, invalidateDashboard),
+      eventBus.on(DataEvents.FORESHADOW_CREATED, invalidateDashboard),
+      eventBus.on(DataEvents.FORESHADOW_UPDATED, invalidateDashboard),
+      eventBus.on(DataEvents.FORESHADOW_DELETED, invalidateDashboard),
+      eventBus.on(DataEvents.WORLD_CONFIG_UPDATED, invalidateDashboard),
+      eventBus.on(DataEvents.AI_GENERATION_COMPLETED, invalidateDashboard),
+      eventBus.on(DataEvents.AI_AUDIT_COMPLETED, invalidateDashboard),
+      eventBus.on(DataEvents.PIPELINE_STATUS_CHANGED, invalidateDashboard),
+      eventBus.on(DataEvents.PROJECT_SWITCHED, invalidateAll),
     ]
-    return () => unsubs.forEach((unsub) => unsub())
+    return () => {
+      if (debounceTimer) clearTimeout(debounceTimer)
+      unsubs.forEach((unsub) => unsub())
+    }
   }, [currentProject?.id, queryClient])
 
   const emotionChartData = useMemo(() => {
@@ -607,6 +587,17 @@ export default function Dashboard() {
 
   const stats = dashboardData?.stats
   const recentActivity = dashboardData?.recent_activity
+
+  const translateActivity = (desc: string) => {
+    return desc
+      .replace(/\bpass\b/g, '通过')
+      .replace(/\bfail\b/g, '未通过')
+      .replace(/\bcompleted\b/g, '完成')
+      .replace(/\bfailed\b/g, '失败')
+      .replace(/\brunning\b/g, '运行中')
+      .replace(/\bwaiting\b/g, '等待中')
+      .replace(/\bcancelled\b/g, '已取消')
+  }
 
   return (
     <div style={{ fontFamily: 'var(--font-family)', flex: 1, overflow: 'auto' }}>
@@ -688,7 +679,7 @@ export default function Dashboard() {
           <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
             {/* Progress */}
             <Col xs={24} lg={14}>
-              <div className="card-surface" style={{ padding: 24 }}>
+              <div className="card-surface" style={{ padding: 24, height: '100%' }}>
                 <h3 className="subsection-title" style={{ marginBottom: 16 }}>项目进度</h3>
                 <Row gutter={[16, 16]}>
                   <Col xs={24} md={8}>
@@ -723,7 +714,7 @@ export default function Dashboard() {
                         const isActive = dashboardData?.phase_progress?.current_phase === i
                         return (
                           <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                            <span className="text-sm text-muted" style={{ width: 60, textAlign: 'right' }}>Phase {i}</span>
+                            <span className="text-sm text-muted" style={{ width: 60, textAlign: 'right' }}>阶段 {i}</span>
                             <Progress
                               percent={phase.percent}
                               size="small"
@@ -750,8 +741,9 @@ export default function Dashboard() {
 
             {/* Activity */}
             <Col xs={24} lg={10}>
-              <div className="card-surface" style={{ padding: 24 }}>
+              <div className="card-surface" style={{ padding: 24, height: '100%', display: 'flex', flexDirection: 'column' }}>
                 <h3 className="subsection-title" style={{ marginBottom: 16 }}>最近活动</h3>
+                <div style={{ flex: 1, overflow: 'auto' }}>
                 {recentActivity && recentActivity.length > 0 ? (
                   <Timeline
                     items={recentActivity.map(act => ({
@@ -759,7 +751,7 @@ export default function Dashboard() {
                       dot: getActivityDot(act.type),
                       children: (
                         <div>
-                          <div style={{ fontSize: 13 }}>{act.description}</div>
+                          <div style={{ fontSize: 13 }}>{translateActivity(act.description)}</div>
                           <div className="text-xs text-muted" style={{ marginTop: 2 }}>{formatTimestamp(act.timestamp)}</div>
                         </div>
                       ),
@@ -768,14 +760,14 @@ export default function Dashboard() {
                 ) : (
                   <Empty description="暂无活动记录" image={Empty.PRESENTED_IMAGE_SIMPLE} />
                 )}
+                </div>
               </div>
             </Col>
           </Row>
 
           <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
-            {/* Foreshadow Health */}
             <Col xs={24} md={8}>
-              <div className="card-surface" style={{ padding: 24 }}>
+              <div className="card-surface" style={{ padding: 24, height: '100%' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
                   <h3 className="subsection-title">伏笔健康度</h3>
                   <NodeIndexOutlined className="text-muted" />
@@ -802,16 +794,15 @@ export default function Dashboard() {
                   {stats && stats.foreshadow_count > 0 ? (
                     <span className="text-sm text-muted">
                       共 <strong style={{ color: 'var(--color-ink)' }}>{stats.foreshadow_count}</strong> 个伏笔
-                      {stats.foreshadows_danger > 0 && <span style={{ color: 'var(--color-danger)', marginLeft: 4 }}>⚠ 有 {stats.foreshadows_danger} 个危险项</span>}
+                      {stats.foreshadows_danger > 0 && <span style={{ color: 'var(--color-danger)', marginLeft: 4 }}>有 {stats.foreshadows_danger} 个危险项</span>}
                     </span>
                   ) : <span className="text-sm text-muted">暂无伏笔数据</span>}
                 </div>
               </div>
             </Col>
 
-            {/* Agent Status */}
             <Col xs={24} md={8}>
-              <div className="card-surface" style={{ padding: 24 }}>
+              <div className="card-surface" style={{ padding: 24, height: '100%' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
                   <h3 className="subsection-title">Agent 状态</h3>
                   <Badge status={busyAgents > 0 ? 'processing' : 'success'} text={busyAgents > 0 ? `${busyAgents} 忙碌` : '全部空闲'} />
@@ -829,7 +820,7 @@ export default function Dashboard() {
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <span className={`badge-dot ${agent.status === 'busy' ? 'amber' : agent.status === 'error' ? 'red' : agent.status === 'offline' ? 'gray' : 'green'} ${agent.status === 'busy' ? 'agent-pulse' : ''}`} />
-                        <span style={{ fontSize: 13 }}>{agent.name}</span>
+                        <span style={{ fontSize: 13 }}>{AGENT_NAME_MAP[agent.name] || agent.name}</span>
                       </div>
                       <Tag color={agent.status === 'idle' ? 'green' : agent.status === 'busy' ? 'gold' : agent.status === 'error' ? 'red' : 'default'}>
                         {agent.status === 'idle' ? '空闲' : agent.status === 'busy' ? '忙碌' : agent.status === 'error' ? '错误' : '离线'}
@@ -845,9 +836,8 @@ export default function Dashboard() {
               </div>
             </Col>
 
-            {/* Emotion Preview */}
             <Col xs={24} md={8}>
-              <div className="card-surface" style={{ padding: 24 }}>
+              <div className="card-surface" style={{ padding: 24, height: '100%' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
                   <h3 className="subsection-title">情感曲线预览</h3>
                   <LineChartOutlined className="text-muted" />
@@ -873,6 +863,31 @@ export default function Dashboard() {
                     ? `基于 ${dashboardData.emotion_curve_preview.length} 个章节的真实数据`
                     : '创建章节后将自动显示情感曲线'}
                 </p>
+              </div>
+            </Col>
+          </Row>
+
+          <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
+            <Col xs={24} lg={12}>
+              <div className="card-surface" style={{ padding: 24 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                  <h3 className="subsection-title" style={{ margin: 0 }}>联网搜索</h3>
+                  <span style={{ fontSize: 11, color: 'var(--color-muted)' }}>
+                    搜索历史、文化、人物等背景资料，AI生成时将自动参考
+                  </span>
+                </div>
+                <KnowledgeSearch projectId={currentProject.id} />
+              </div>
+            </Col>
+            <Col xs={24} lg={12}>
+              <div className="card-surface" style={{ padding: 24 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                  <h3 className="subsection-title" style={{ margin: 0 }}>资料上传</h3>
+                  <span style={{ fontSize: 11, color: 'var(--color-muted)' }}>
+                    上传资料后AI将在生成时自动参考这些内容
+                  </span>
+                </div>
+                <FileUpload projectId={currentProject.id} compact />
               </div>
             </Col>
           </Row>

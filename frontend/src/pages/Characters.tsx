@@ -112,17 +112,17 @@ export default function Characters() {
   const [arcDrawerOpen, setArcDrawerOpen] = useState(false)
   const [graphScaling, setGraphScaling] = useState(d3.zoomIdentity)
   const svgRef = useRef<SVGSVGElement>(null)
-  const abortRef = useRef<AbortController | null>(null)
+  const mountedRef = useRef(true)
 
-  const fetchData = async (signal?: AbortSignal) => {
+  const fetchData = useCallback(async () => {
     if (!currentProject?.id) return
     setLoading(true)
     try {
       const [chars, rels] = await Promise.all([
-        charactersApi.list(currentProject.id, undefined, signal),
-        relationsApi.list(currentProject.id, signal),
+        charactersApi.list(currentProject.id),
+        relationsApi.list(currentProject.id),
       ])
-      if (signal?.aborted) { setLoading(false); return }
+      if (!mountedRef.current) { setLoading(false); return }
       setCharacters(chars.map(apiCharToCharData))
       setRelations(rels.map(r => ({
         id: r.id, char_a_id: r.char_a_id, char_b_id: r.char_b_id,
@@ -136,26 +136,21 @@ export default function Characters() {
         arc_milestones: r.arc_milestones || [],
       })))
     } catch (e: any) {
-      if (signal?.aborted || e?.name === 'AbortError') { setLoading(false); return }
+      if (!mountedRef.current) { setLoading(false); return }
       notification.error({ message: '加载角色数据失败', description: e?.detail || e?.message, placement: 'topRight' })
     }
     setLoading(false)
-  }
+  }, [currentProject?.id])
 
   const refreshData = useCallback(() => {
-    abortRef.current?.abort()
-    const ctrl = new AbortController()
-    abortRef.current = ctrl
-    return fetchData(ctrl.signal)
-  }, [currentProject?.id])
+    return fetchData()
+  }, [fetchData])
 
   useEffect(() => {
-    abortRef.current?.abort()
-    const ctrl = new AbortController()
-    abortRef.current = ctrl
-    fetchData(ctrl.signal)
-    return () => { ctrl.abort() }
-  }, [currentProject?.id])
+    mountedRef.current = true
+    fetchData()
+    return () => { mountedRef.current = false }
+  }, [fetchData])
 
   useEffect(() => {
     const unsubs = [
@@ -545,7 +540,7 @@ export default function Characters() {
       .attr('text-anchor', 'middle')
       .attr('font-size', '12px')
       .attr('dy', 14)
-      .text('💥')
+      .text('引爆')
 
     triggerLabelG.append('title')
       .text((d: any) => `引爆点: ${d.triggerCondition}`)
@@ -556,7 +551,7 @@ export default function Characters() {
       .attr('dy', -20)
       .style('pointer-events', 'none')
       .style('user-select', 'none')
-      .text('🔒')
+      .text('暗线')
 
     const nodeG = g.append('g').selectAll('g').data(nodes).join('g')
       .call(d3.drag<SVGGElement, any, any>()
@@ -737,10 +732,10 @@ export default function Characters() {
                         {char.core_goal || char.arc_description || '暂未设定目标与弧线'}
                       </p>
                       <div className="flex items-center gap-2 text-[10px] text-gray-400 dark:text-gray-500">
-                        <Tooltip title={`${relCount} 条关系`}><span>🔗 {relCount}</span></Tooltip>
+                        <Tooltip title={`${relCount} 条关系`}><span>关系 {relCount}</span></Tooltip>
                         <span>|</span>
-                        <Tooltip title={char.arc_description || '角色弧未设定'}><span>{char.arc_description ? '📈 有弧线' : '⚪ 未设定弧'}</span></Tooltip>
-                        {char.dark_secret && <><span>|</span><Tooltip title={char.dark_secret}><span>🤐 有秘密</span></Tooltip></>}
+                        <Tooltip title={char.arc_description || '角色弧未设定'}><span>{char.arc_description ? '有弧线' : '未设定弧'}</span></Tooltip>
+                        {char.dark_secret && <><span>|</span><Tooltip title={char.dark_secret}><span>有秘密</span></Tooltip></>}
                       </div>
                     </div>
                   </div>
@@ -771,8 +766,8 @@ export default function Characters() {
               <span className="text-red-500 font-bold">↓恶化</span>
               <span className="text-gray-400 font-bold">→稳定</span>
               <span className="ml-1">|</span>
-              <span>💥引爆点</span>
-              <span>🔒暗线</span>
+              <span>引爆点</span>
+              <span>暗线</span>
             </div>
           </div>
         }
@@ -816,7 +811,7 @@ export default function Characters() {
           )}
         </div>
         <p className="text-[10px] text-gray-400 mt-2">
-          🖱 滚轮缩放 · 拖拽节点 · 点击节点查看详情 · 点击连线查看关系弧线时间轴 · 箭头=关系方向 · ↑↓→=弧线趋势 · 💥=引爆点 · 🔒紫色虚线=暗线关系
+          滚轮缩放 · 拖拽节点 · 点击节点查看详情 · 点击连线查看关系弧线时间轴 · 箭头=关系方向 · 上下左右=弧线趋势 · 引爆=引爆点 · 紫色虚线=暗线关系
         </p>
       </Card>
 
@@ -918,7 +913,7 @@ export default function Characters() {
                 </Tag>
 
                 {(selectedChar.background || selectedChar.core_goal || selectedChar.core_fear) && (
-                  <Card size="small" className="border-0 bg-gray-50 dark:bg-slate-800" title={<span className="text-xs font-semibold">📋 角色深描</span>}>
+                  <Card size="small" className="border-0 bg-gray-50 dark:bg-slate-800" title={<span className="text-xs font-semibold">角色深描</span>}>
                     <div className="space-y-3 text-sm">
                       {selectedChar.background && (
                         <div>
@@ -928,19 +923,19 @@ export default function Characters() {
                       )}
                       {selectedChar.core_goal && (
                         <div>
-                          <div className="text-xs text-gray-400 mb-1 font-semibold">🎯 核心动机</div>
+                          <div className="text-xs text-gray-400 mb-1 font-semibold">[伏笔] 核心动机</div>
                           <p className="text-blue-700 dark:text-blue-300 m-0">{selectedChar.core_goal}</p>
                         </div>
                       )}
                       {selectedChar.core_fear && (
                         <div>
-                          <div className="text-xs text-gray-400 mb-1 font-semibold">😨 深层恐惧</div>
+                          <div className="text-xs text-gray-400 mb-1 font-semibold">深层恐惧</div>
                           <p className="text-red-600 dark:text-red-300 m-0">{selectedChar.core_fear}</p>
                         </div>
                       )}
                       {selectedChar.dark_secret && (
                         <div>
-                          <div className="text-xs text-gray-400 mb-1 font-semibold">🤐 不为人知的秘密</div>
+                          <div className="text-xs text-gray-400 mb-1 font-semibold">不为人知的秘密</div>
                           <p className="text-purple-700 dark:text-purple-300 m-0 italic">{selectedChar.dark_secret}</p>
                         </div>
                       )}
@@ -949,7 +944,7 @@ export default function Characters() {
                 )}
 
                 {(selectedChar.surface_image || selectedChar.true_self) && (
-                  <Card size="small" className="border-0 bg-gray-50 dark:bg-slate-800" title={<span className="text-xs font-semibold">🎭 双面镜</span>}>
+                  <Card size="small" className="border-0 bg-gray-50 dark:bg-slate-800" title={<span className="text-xs font-semibold">[角色] 双面镜</span>}>
                     <div className="grid grid-cols-2 gap-3 text-sm">
                       {selectedChar.surface_image && (
                         <div className="bg-white dark:bg-slate-700 p-3 rounded-lg">
@@ -969,13 +964,13 @@ export default function Characters() {
 
                 {selectedChar.arc_description && (
                   <Card size="small" className="border-0 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/10 dark:to-pink-900/10"
-                    title={<span className="text-xs font-semibold">📈 角色弧</span>}>
+                    title={<span className="text-xs font-semibold">角色弧</span>}>
                     <p className="text-sm text-gray-600 dark:text-gray-400 m-0 leading-relaxed">{selectedChar.arc_description}</p>
                   </Card>
                 )}
 
                 {(selectedChar.language_style || selectedChar.catchphrase) && (
-                  <Card size="small" className="border-0 bg-gray-50 dark:bg-slate-800" title={<span className="text-xs font-semibold">💬 语言特征</span>}>
+                  <Card size="small" className="border-0 bg-gray-50 dark:bg-slate-800" title={<span className="text-xs font-semibold">语言特征</span>}>
                     <div className="space-y-2">
                       {selectedChar.language_style && <p className="text-sm text-gray-600 dark:text-gray-400 m-0">风格: {selectedChar.language_style}</p>}
                       {selectedChar.catchphrase && <Tag color="blue" className="text-sm">「{selectedChar.catchphrase}」</Tag>}
@@ -985,7 +980,7 @@ export default function Characters() {
 
                 {(['behavior_inevitable', 'behavior_never', 'behavior_conditional'] as const).map(field => {
                   if (!selectedChar[field].length) return null
-                  const labels = { behavior_inevitable: '✓ 必然行为', behavior_never: '✗ 绝对不会', behavior_conditional: '◉ 有条件行为' }
+                  const labels = { behavior_inevitable: '必然行为', behavior_never: '绝对不会', behavior_conditional: '有条件行为' }
                   const colors = { behavior_inevitable: 'green', behavior_never: 'red', behavior_conditional: 'orange' }
                   return (
                     <div key={field}>
@@ -1000,7 +995,7 @@ export default function Characters() {
                 })}
 
                 {charRelations.length > 0 && (
-                  <Card size="small" className="border-0 bg-gray-50 dark:bg-slate-800" title={<span className="text-xs font-semibold">🔗 关系网络 ({charRelations.length})</span>}>
+                  <Card size="small" className="border-0 bg-gray-50 dark:bg-slate-800" title={<span className="text-xs font-semibold">关系网络 ({charRelations.length})</span>}>
                     <div className="space-y-2">
                       {charRelations.map((rel, i) => (
                         <div key={i} className="flex items-center gap-2 p-2 bg-white dark:bg-slate-700 rounded-lg cursor-pointer"
@@ -1093,7 +1088,7 @@ export default function Characters() {
               </div>
 
               <Card size="small" className="border-0 bg-gray-50 dark:bg-slate-800 mb-4"
-                title={<span className="text-xs font-semibold">📊 关系指标</span>}>
+                title={<span className="text-xs font-semibold">[概览] 关系指标</span>}>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <div className="flex justify-between text-[10px] mb-1">
@@ -1114,7 +1109,7 @@ export default function Characters() {
 
               {(asymA.length > 0 || asymB.length > 0) && (
                 <Card size="small" className="border-0 bg-gray-50 dark:bg-slate-800 mb-4"
-                  title={<span className="text-xs font-semibold">🔮 信息不对称</span>}>
+                  title={<span className="text-xs font-semibold">信息不对称</span>}>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="bg-white dark:bg-slate-700 p-2.5 rounded-lg">
                       <div className="text-[10px] text-gray-400 mb-1.5 font-semibold">
@@ -1154,7 +1149,7 @@ export default function Characters() {
 
               {milestones.length > 0 && (
                 <Card size="small" className="border-0 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/10 dark:to-pink-900/10 mb-4"
-                  title={<span className="text-xs font-semibold">📈 关系弧线时间轴</span>}>
+                  title={<span className="text-xs font-semibold">关系弧线时间轴</span>}>
                   <Timeline
                     items={milestones.map((m: any, i: number) => {
                       const trustChange = typeof m.trust_change === 'number' ? m.trust_change : 0
@@ -1192,7 +1187,7 @@ export default function Characters() {
 
               {relEditor.triggerCondition && (
                 <Card size="small" className="border-0 bg-red-50 dark:bg-red-900/10 mb-4"
-                  title={<span className="text-xs font-semibold">💥 引爆点</span>}>
+                  title={<span className="text-xs font-semibold">引爆点</span>}>
                   <p className="text-xs text-red-700 dark:text-red-300 m-0 leading-relaxed">
                     {relEditor.triggerCondition}
                   </p>
@@ -1200,7 +1195,7 @@ export default function Characters() {
               )}
 
               <Card size="small" className="border-0 bg-gray-50 dark:bg-slate-800"
-                title={<span className="text-xs font-semibold">✏️ 编辑关系</span>}>
+                title={<span className="text-xs font-semibold">编辑关系</span>}>
                 <div className="space-y-3">
                   <div>
                     <label className="text-[10px] text-gray-400 mb-0.5 block">关系类型</label>

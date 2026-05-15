@@ -51,6 +51,10 @@ redis-data/
 API文档.md
 Trae提示词文档.md
 docs/
+AI辅助剧本生成系统智能化升级方案_深度调研报告.md
 
 # Trae IDE 规格文件
 .trae/
+
+# TypeScript build info
+*.tsbuildinfo

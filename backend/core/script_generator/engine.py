@@ -178,6 +178,10 @@ class ScriptGenerationEngine:
             "relations": relations,
             "config": config,
             "genre": config.get("genre", "互动叙事"),
+            "sub_genre": config.get("sub_genre", ""),
+            "theme": config.get("theme", ""),
+            "tone": config.get("tone", "neutral"),
+            "narrative_pov": config.get("narrative_pov", "third_person"),
             "style": config.get("style", config.get("writing_style", "现代白话")),
             "core_contradiction": config.get("core_contradiction", ""),
             "target_word_count": config.get("target_word_count", 50000),
@@ -513,12 +517,26 @@ class ScriptGenerationEngine:
                 parsed["scene_code"] = scene.get("scene_code")
                 parsed["scene_id"] = scene.get("id")
 
-                if word_count >= min_required_words:
+                combined_scene_text = "\n".join([
+                    str(narration or ""),
+                    json.dumps(dialogue, ensure_ascii=False) if isinstance(dialogue, (list, dict)) else str(dialogue or ""),
+                    json.dumps(actions, ensure_ascii=False) if isinstance(actions, (list, dict)) else str(actions or ""),
+                ])
+                reference_hit = self._passes_reference_guardrail(combined_scene_text, project_data, rag_chunks)
+
+                if word_count >= min_required_words and reference_hit:
                     return parsed
 
-                if word_count > best_word_count:
+                if word_count > best_word_count and reference_hit:
                     best_result = parsed
                     best_word_count = word_count
+
+                if not reference_hit:
+                    logger.warning(
+                        "场景 %s 第%d次生成未命中项目锚点，将重试",
+                        scene.get("scene_code"), attempt + 1
+                    )
+                    continue
 
                 logger.warning(
                     "场景 %s 第%d次生成字数不足: %d < %d，将重试",
@@ -557,6 +575,9 @@ class ScriptGenerationEngine:
         if chapter_summary:
             query_parts.append(chapter_summary[:200])
         query_parts.append(project_data.get("core_contradiction", ""))
+        query_parts.append(project_data.get("theme", ""))
+        query_parts.append(project_data.get("sub_genre", ""))
+        query_parts.append(project_data.get("style", ""))
         query_parts.append(f"情感{emotion}")
 
         query = "，".join(filter(None, query_parts))
@@ -628,11 +649,11 @@ class ScriptGenerationEngine:
 7. 环境叙事：场景本身应当传达故事信息
 
 【正确vs错误的例子】
-❌ 错误（设定式）："场景发生在酒馆，主角和反派对峙，主角试图说服反派投降。"
-✅ 正确（文学式）："酒馆的灯笼在穿堂风里摇晃，把两人的影子撕成碎片。主角的手指扣在腰间的剑柄上，指节发白。'你来了。'他说，声音比想象中稳。"
+[X] 错误（设定式）："场景发生在酒馆，主角和反派对峙，主角试图说服反派投降。"
+[V] 正确（文学式）："酒馆的灯笼在穿堂风里摇晃，把两人的影子撕成碎片。主角的手指扣在腰间的剑柄上，指节发白。'你来了。'他说，声音比想象中稳。"
 
-❌ 错误（摘要式）："角色A表达了他对角色B的愤怒，因为B背叛了他。"
-✅ 正确（台词式）："{{'char': '角色A', 'text': '这杯酒我敬你——敬你当年在雪地里给我那块干粮。', 'subtext': '我记得你的恩情，但你也欠我一条命'}}"
+[X] 错误（摘要式）："角色A表达了他对角色B的愤怒，因为B背叛了他。"
+[V] 正确（台词式）："{{'char': '角色A', 'text': '这杯酒我敬你——敬你当年在雪地里给我那块干粮。', 'subtext': '我记得你的恩情，但你也欠我一条命'}}"
 
 【输出格式要求】
 你必须输出严格的JSON格式，不要包含任何markdown标记或额外文字。JSON结构如下：
@@ -790,7 +811,7 @@ class ScriptGenerationEngine:
         rag_section = ""
         if rag_context:
             rag_section = f"""━━━━━━━━━━━━━━━━━━━━━━
-🔍 RAG 检索到的相关上下文（已生成的场景/角色/伏笔）
+[搜索] RAG 检索到的相关上下文（已生成的场景/角色/伏笔）
 ━━━━━━━━━━━━━━━━━━━━━━
 {rag_context}
 """
@@ -798,35 +819,38 @@ class ScriptGenerationEngine:
         prompt = f"""请为以下场景创作完整的、文学性的剧本内容。
 
 ━━━━━━━━━━━━━━━━━━━━━━
-📖 项目信息
+[项目] 项目信息
 ━━━━━━━━━━━━━━━━━━━━━━
 题材: {project_data['genre']}
+子类型: {project_data.get('sub_genre', '') or '未指定'}
 风格: {project_data['style']}
+主题: {project_data.get('theme', '') or '未指定'}
 核心矛盾: {project_data['core_contradiction']}
+叙事视角: {project_data.get('narrative_pov', '') or 'third_person'}
 目标总字数: {target_word_count}字
 
 ━━━━━━━━━━━━━━━━━━━━━━
-🌍 世界观设定
+[世界观] 世界观设定
 ━━━━━━━━━━━━━━━━━━━━━━
 {world_summary or '(无详细世界观)'}
 
 ━━━━━━━━━━━━━━━━━━━━━━
-👥 角色详细档案
+[角色] 角色详细档案
 ━━━━━━━━━━━━━━━━━━━━━━
 {char_summary or '(无角色信息)'}
 
 ━━━━━━━━━━━━━━━━━━━━━━
-🔗 角色关系网络
+[关联] 角色关系网络
 ━━━━━━━━━━━━━━━━━━━━━━
 {relation_summary or '(无关系信息)'}
 
 ━━━━━━━━━━━━━━━━━━━━━━
-🔮 伏笔信息
+[伏笔] 伏笔信息
 ━━━━━━━━━━━━━━━━━━━━━━
 {fs_summary or '(无伏笔信息)'}
 
 ━━━━━━━━━━━━━━━━━━━━━━
-📋 当前章节
+[详情] 当前章节
 ━━━━━━━━━━━━━━━━━━━━━━
 第{chapter.get('chapter_number', '?')}章: {chapter.get('title', '')}
 章节摘要: {chapter.get('summary', '')}
@@ -834,7 +858,7 @@ class ScriptGenerationEngine:
 情感目标: {chapter.get('emotion_target', 5)}/10
 
 ━━━━━━━━━━━━━━━━━━━━━━
-🎬 当前场景
+[场景] 当前场景
 ━━━━━━━━━━━━━━━━━━━━━━
 场景编号: {scene.get('scene_code')}
 场景类型: {scene_type}
@@ -847,21 +871,21 @@ class ScriptGenerationEngine:
 对白要求: {writing_guide['dialogue_guide']}
 
 ━━━━━━━━━━━━━━━━━━━━━━
-📝 前序场景内容（请严格保持叙事连续性）
+[说明] 前序场景内容（请严格保持叙事连续性）
 ━━━━━━━━━━━━━━━━━━━━━━
 {prev_scene_content or '(本章第一个场景，请参考上一章结尾自然过渡)'}
 
 {rag_section}━━━━━━━━━━━━━━━━━━━━━━
-✍️ 写作要求
+[写作要求]
 ━━━━━━━━━━━━━━━━━━━━━━
 
 【字数硬性要求】本场景总字数（旁白+对白+动作）必须在 {min_words}-{max_words} 字之间！
 
 【绝对禁止——出现以下情况作品直接报废】
-- ❌ narration写成"场景概述"、"剧情提要"、"分镜说明"或"设定描述"
-- ❌ dialogue写成"角色讨论了XX问题"或"两人发生了争执"这种间接叙述
-- ❌ 用 bullet points 或编号列表代替文学描写
-- ❌ 输出类似"本场景主要讲述..."、"在这一幕中..."的元描述
+- [X] narration写成"场景概述"、"剧情提要"、"分镜说明"或"设定描述"
+- [X] dialogue写成"角色讨论了XX问题"或"两人发生了争执"这种间接叙述
+- [X] 用 bullet points 或编号列表代替文学描写
+- [X] 输出类似"本场景主要讲述..."、"在这一幕中..."的元描述
 
 【内容要求】
 1. **narration必须是可直接阅读的小说正文**——读者不需要任何补充说明就能沉浸其中。写环境、写动作、写心理、写氛围，像金庸、古龙、刘慈欣那样写。
@@ -884,6 +908,41 @@ class ScriptGenerationEngine:
 请直接输出JSON，不要输出任何其他内容。"""
 
         return prompt
+
+    def _extract_reference_terms(self, project_data: dict, rag_chunks: list | None = None) -> list[str]:
+        raw_terms: list[str] = []
+        for value in (
+            project_data.get("genre", ""),
+            project_data.get("sub_genre", ""),
+            project_data.get("theme", ""),
+            project_data.get("core_contradiction", ""),
+            project_data.get("style", ""),
+        ):
+            if isinstance(value, str) and value.strip():
+                raw_terms.extend(re.split(r"[，,、；;。\s/]+", value))
+
+        if rag_chunks:
+            for chunk in rag_chunks[:3]:
+                text = chunk.text if hasattr(chunk, "text") else chunk.get("text", "") if isinstance(chunk, dict) else str(chunk)
+                raw_terms.extend(re.findall(r"[\u4e00-\u9fffA-Za-z0-9]{2,8}", text[:160]))
+
+        stop_terms = {"未指定", "互动叙事", "现代白话", "题材", "主题", "核心矛盾", "风格", "场景", "章节", "情感"}
+        terms: list[str] = []
+        for term in raw_terms:
+            cleaned = term.strip()
+            if len(cleaned) < 2 or cleaned in stop_terms or cleaned.isdigit():
+                continue
+            if cleaned not in terms:
+                terms.append(cleaned)
+            if len(terms) >= 8:
+                break
+        return terms
+
+    def _passes_reference_guardrail(self, generated_text: str, project_data: dict, rag_chunks: list | None = None) -> bool:
+        anchor_terms = self._extract_reference_terms(project_data, rag_chunks)
+        if not anchor_terms:
+            return True
+        return any(term in generated_text for term in anchor_terms)
 
     def _parse_scene_output(self, content: str) -> dict:
         try:

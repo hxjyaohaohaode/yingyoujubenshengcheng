@@ -26,12 +26,107 @@ def parse_foreshadow_design(text: str) -> dict:
     try:
         return json.loads(content)
     except json.JSONDecodeError:
-        content = content.replace("'", '"').replace("None", "null").replace("True", "true").replace("False", "false")
+        pass
+
+    repaired = _repair_truncated_foreshadow_json(content)
+    if repaired is not None:
+        return repaired
+
+    content = content.replace("'", '"').replace("None", "null").replace("True", "true").replace("False", "false")
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError:
+        pass
+
+    repaired = _repair_truncated_foreshadow_json(content)
+    if repaired is not None:
+        return repaired
+
+    logger.warning("Foreshadow JSON解析失败，返回空结构")
+    return {"foreshadows": [], "relations": [], "design_philosophy": "", "revelation_path": [], "stats": {}}
+
+
+def _repair_truncated_foreshadow_json(text: str) -> dict | None:
+    if not text:
+        return None
+    start = text.find("{")
+    if start == -1:
+        return None
+    fragment = text[start:]
+
+    open_braces = 0
+    open_brackets = 0
+    in_string = False
+    escape_next = False
+    last_complete_brace_pos = -1
+
+    for i, ch in enumerate(fragment):
+        if escape_next:
+            escape_next = False
+            continue
+        if ch == "\\":
+            escape_next = True
+            continue
+        if ch == '"' and not escape_next:
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if ch == "{":
+            open_braces += 1
+        elif ch == "}":
+            open_braces -= 1
+            if open_braces == 0:
+                last_complete_brace_pos = i
+        elif ch == "[":
+            open_brackets += 1
+        elif ch == "]":
+            open_brackets -= 1
+
+    if last_complete_brace_pos > 0:
+        candidate = fragment[:last_complete_brace_pos + 1]
         try:
-            return json.loads(content)
+            result = json.loads(candidate)
+            if isinstance(result, dict):
+                result.setdefault("foreshadows", result.get("foreshadows", []))
+                result.setdefault("stats", result.get("stats", {}))
+                return result
         except json.JSONDecodeError:
-            logger.warning("Foreshadow JSON解析失败")
-            return {"foreshadows": [], "relations": [], "design_philosophy": "", "revelation_path": [], "stats": {}}
+            pass
+
+    closing = ""
+    if in_string:
+        closing += '"'
+    closing += "]" * max(0, open_brackets) + "}" * max(0, open_braces)
+    candidate = fragment + closing
+    try:
+        result = json.loads(candidate)
+        if isinstance(result, dict):
+            result.setdefault("foreshadows", result.get("foreshadows", []))
+            result.setdefault("stats", result.get("stats", {}))
+            return result
+    except json.JSONDecodeError:
+        pass
+
+    return None
+
+
+def parse_foreshadow_reaction(text: str) -> dict:
+    content = text.strip()
+    json_start = content.find("{")
+    json_end = content.rfind("}")
+    if json_start != -1 and json_end != -1:
+        candidate = content[json_start:json_end + 1]
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError:
+            pass
+
+    repaired = _repair_truncated_foreshadow_json(content[json_start:] if json_start != -1 else content)
+    if repaired is not None:
+        return repaired
+
+    return {"reaction_analysis": content, "reactions": [], "network_strength": 5}
 
 
 FORESHADOW_DESIGN_SKILL = Skill()
@@ -58,7 +153,7 @@ FORESHADOW_REACTION_SKILL.prompt_template = """分析以下伏笔之间的化学
 6. 伏笔与世界观/角色的关联是否充分
 
 输出JSON格式的分析报告。"""
-FORESHADOW_REACTION_SKILL.output_parser = lambda text: {"reaction_analysis": text}
+FORESHADOW_REACTION_SKILL.output_parser = parse_foreshadow_reaction
 
 
 @register_agent
@@ -134,6 +229,13 @@ class ForeshadowAgent(BaseAgent):
                 ch_info["summary"] = summary
             chapter_outlines.append(ch_info)
 
+        if task.task_type == "foreshadow_reaction":
+            foreshadows = payload.get("foreshadows", [])
+            if not foreshadows:
+                foreshadows = await self.storage.get_foreshadows(project_id) or []
+            foreshadow_data = json.dumps(foreshadows, ensure_ascii=False, indent=2) if foreshadows else "暂无伏笔数据"
+            return {"foreshadow_data": foreshadow_data}
+
         system_prompt, user_prompt = build_foreshadow_design_prompt(
             core_truth=core_truth,
             core_contradiction=core_contradiction,
@@ -198,7 +300,7 @@ class ForeshadowAgent(BaseAgent):
             result.setdefault("issues", []).append(
                 f"全剧级伏笔数量不足：当前{global_count}条，建议5-8条"
             )
-        if chapter_count < 20:
+        if chapter_count < 15:
             result.setdefault("issues", []).append(
-                f"章节级伏笔数量不足：当前{chapter_count}条，建议20-30条"
+                f"章节级伏笔数量不足：当前{chapter_count}条，建议15-25条"
             )

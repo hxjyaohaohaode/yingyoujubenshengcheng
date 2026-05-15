@@ -11,12 +11,14 @@ Skills:
 """
 
 import json
+import re
 from typing import Any, Callable, TypedDict
 
 from core.agent.base import BaseAgent, AgentTask, AgentResult, layer0_value
 from core.agent.skill import Skill
 from core.agent.registry import register_agent
 from core.agent.prompts import SCENE_GEN_UPGRADED_STANDARDS
+from core.agent.tools import parse_tool_calls, execute_search_tool, auto_research_if_needed, WEB_SEARCH_SYSTEM_PROMPT_ADDON
 
 
 class _ThinkingModeRule(TypedDict):
@@ -111,6 +113,15 @@ SCENE_WRITER_SKILL.prompt_template = """你是一位{genre}题材的{style}风�
 
 {_scene_gen_standards}
 
+## 项目核心约束
+{project_brief}
+
+## 创作锚点
+- 子类型: {sub_genre}
+- 主题: {theme}
+- 核心矛盾: {core_contradiction}
+- 叙事视角: {narrative_pov}
+
 ## 世界观设定
 {world_settings}
 
@@ -136,6 +147,9 @@ SCENE_WRITER_SKILL.prompt_template = """你是一位{genre}题材的{style}风�
 
 ## 参考素材（RAG检索结果）
 {rag_context}
+
+## 联网搜索工具
+{web_search_tool_prompt}
 
 ## 输出要求
 请输出 JSON 格式:
@@ -184,20 +198,20 @@ SCENE_WRITER_SKILL.prompt_template = """你是一位{genre}题材的{style}风�
 }}
 
 【正确vs错误的例子】
-❌ 错误 narration："场景发生在酒馆，主角和反派对峙。"
-✅ 正确 narration："酒馆的灯笼在穿堂风里摇晃，把两人的影子撕成碎片。主角的手指扣在腰间的剑柄上，指节发白。空气中弥漫着劣质麦酒和汗渍的酸味。'你来了。'他说，声音比想象中稳。"
+[X] 错误 narration："场景发生在酒馆，主角和反派对峙。"
+[V] 正确 narration："酒馆的灯笼在穿堂风里摇晃，把两人的影子撕成碎片。主角的手指扣在腰间的剑柄上，指节发白。空气中弥漫着劣质麦酒和汗渍的酸味。'你来了。'他说，声音比想象中稳。"
 
-❌ 错误 dialogue：{{"char": "角色A", "text": "我对你很失望", "subtext": "我对你很失望"}}
-✅ 正确 dialogue：{{"char": "角色A", "text": "这杯酒我敬你——敬你当年在雪地里给我那块干粮。", "subtext": "我记得你的恩情，但你也欠我一条命", "language_style": "言简意赅，每句不超过15字", "catchphrase_ref": "敬你"}}
+[X] 错误 dialogue：{{"char": "角色A", "text": "我对你很失望", "subtext": "我对你很失望"}}
+[V] 正确 dialogue：{{"char": "角色A", "text": "这杯酒我敬你——敬你当年在雪地里给我那块干粮。", "subtext": "我记得你的恩情，但你也欠我一条命", "language_style": "言简意赅，每句不超过15字", "catchphrase_ref": "敬你"}}
 
-❌ 错误 choices：{{"id": "A", "text": "帮助他", "consequence": "他感谢你"}}
-✅ 正确 choices：{{"id": "A", "text": "将情报交给盟友", "consequence_direct": "盟友立即发动突袭，救出人质但损失惨重", "consequence_indirect": "敌方开始怀疑内部有叛徒，加强审查", "consequence_long_term": "盟友因这次行动获得的关键位置，在最终决战中成为决定性力量", "moral_alignment": "good"}}
+[X] 错误 choices：{{"id": "A", "text": "帮助他", "consequence": "他感谢你"}}
+[V] 正确 choices：{{"id": "A", "text": "将情报交给盟友", "consequence_direct": "盟友立即发动突袭，救出人质但损失惨重", "consequence_indirect": "敌方开始怀疑内部有叛徒，加强审查", "consequence_long_term": "盟友因这次行动获得的关键位置，在最终决战中成为决定性力量", "moral_alignment": "good"}}
 
-❌ 错误 foreshadow_ops：{{"fs_id": "FS001", "op": "plant", "content": "暗示角色B的真实身份"}}
-✅ 正确 foreshadow_ops：{{"fs_id": "FS001", "op": "plant", "content": "暗示角色B的真实身份", "worldview_ref": "history-百年前的流放事件", "text_implementation": "在叙述中描写角色B下意识触摸左耳的旧伤疤——与百年前流放者标记的传说吻合"}}
+[X] 错误 foreshadow_ops：{{"fs_id": "FS001", "op": "plant", "content": "暗示角色B的真实身份"}}
+[V] 正确 foreshadow_ops：{{"fs_id": "FS001", "op": "plant", "content": "暗示角色B的真实身份", "worldview_ref": "history-百年前的流放事件", "text_implementation": "在叙述中描写角色B下意识触摸左耳的旧伤疤——与百年前流放者标记的传说吻合"}}
 
-❌ 错误 causal_chain：{{"preconditions": ["前序事件"], "catalyst": "发生了什么", "direct_result": "结果", "indirect_result": "间接结果", "far_result": "远期结果"}}
-✅ 正确 causal_chain：{{"preconditions": ["角色A在前一场景中获得了密室的钥匙", "世界观设定中百年流放者的后裔隐藏在贵族中"], "catalyst": "角色B在酒馆中下意识触摸左耳旧伤疤，被角色A注意到", "direct_result": "角色A开始怀疑角色B的身份，但选择不动声色", "indirect_result": "角色A开始暗中调查角色B的背景，导致两人关系出现裂痕", "far_result": "角色B的真实身份揭露，引发贵族阶层的权力重组"}}
+[X] 错误 causal_chain：{{"preconditions": ["前序事件"], "catalyst": "发生了什么", "direct_result": "结果", "indirect_result": "间接结果", "far_result": "远期结果"}}
+[V] 正确 causal_chain：{{"preconditions": ["角色A在前一场景中获得了密室的钥匙", "世界观设定中百年流放者的后裔隐藏在贵族中"], "catalyst": "角色B在酒馆中下意识触摸左耳旧伤疤，被角色A注意到", "direct_result": "角色A开始怀疑角色B的身份，但选择不动声色", "indirect_result": "角色A开始暗中调查角色B的背景，导致两人关系出现裂痕", "far_result": "角色B的真实身份揭露，引发贵族阶层的权力重组"}}
 
 【绝对禁止】
 - narration写成"场景概述"、"剧情提要"、"分镜说明"或"设定描述"
@@ -584,14 +598,109 @@ class CreatorAgent(BaseAgent):
         context = await self._build_context(task)
         skill = self._select_skill(task.task_type)
 
-        result = await skill.execute(
-            context=context,
-            requirements=payload,
-            gateway=self.gateway,
-            cost_profile=cost_profile,
-            max_tokens=self._resolve_max_tokens(task.task_type, payload),
-            temperature=self._resolve_temperature(task.task_type, payload),
-        )
+        research_context = ""
+        if payload.get("enable_web_search", True) and task.task_type in (
+            "scene_writer", "world_builder", "character_designer",
+            "outline_writer", "chapter_outliner", "branch_designer",
+        ):
+            prompt_text = skill.render_prompt(context, task.payload)
+            research_context = await auto_research_if_needed(prompt_text, self.gateway)
+
+        if research_context:
+            enriched_prompt = skill.render_prompt(context, task.payload) + "\n\n" + research_context
+            result = await skill.execute_with_custom_prompt(
+                custom_prompt=enriched_prompt,
+                requirements=task.payload,
+                gateway=self.gateway,
+                cost_profile=cost_profile,
+                max_tokens=self._resolve_max_tokens(task.task_type, payload),
+                temperature=self._resolve_temperature(task.task_type, payload),
+            )
+        elif payload.get("fallback_mode") and task.task_type == "scene_writer":
+            import copy
+            skill = copy.deepcopy(skill)
+            skill.prompt_template = """你是互动影游场景编剧。由于格式问题，本次使用简化模式。
+
+{_chinese_writing_standards}
+
+请直接输出纯文本格式的场景内容，包含：
+1. 叙述段落（完整的小说式描写，包含画面感和感官描写）
+2. 对话段落（角色名：台词）
+3. 场景结尾的选择支（选项A/B/C及简述后果）
+
+不要输出JSON，不要输出代码块，直接写正文。
+
+## 世界观设定
+{world_settings}
+
+## 角色档案
+{character_states}
+
+## 前序场景
+{previous_scene}
+
+## 本场景任务
+- 场景编号: {scene_code}
+- 场景类型: {scene_type}
+- 情感目标: {emotion_target}/10
+- 地点: {location}
+
+请直接写出完整的场景正文（叙述+对话+选择支），至少800字。"""
+            skill.output_parser = lambda text: {"narration": text, "dialogue": [], "choices": [], "fallback_generated": True}
+            result = await skill.execute(
+                context=context,
+                requirements=payload,
+                gateway=self.gateway,
+                cost_profile=cost_profile,
+                max_tokens=self._resolve_max_tokens(task.task_type, payload),
+                temperature=self._resolve_temperature(task.task_type, payload),
+            )
+        else:
+            result = await skill.execute(
+                context=context,
+                requirements=payload,
+                gateway=self.gateway,
+                cost_profile=cost_profile,
+                max_tokens=self._resolve_max_tokens(task.task_type, payload),
+                temperature=self._resolve_temperature(task.task_type, payload),
+            )
+
+            if isinstance(result, dict):
+                text_content = result.get("narration", "") or result.get("dialogue", "") or json.dumps(result, ensure_ascii=False)
+            else:
+                text_content = str(result)
+
+            tool_calls = parse_tool_calls(text_content)
+            if tool_calls:
+                search_results = ""
+                for tc in tool_calls[:3]:
+                    try:
+                        sr = await execute_search_tool(tc["arguments"]["query"], self.gateway)
+                        from core.agent.tools import format_search_results_for_agent
+                        search_results += "\n" + format_search_results_for_agent(sr)
+                    except Exception as e:
+                        logger.warning("Agent search_web 执行失败: %s", str(e)[:100])
+
+                if search_results:
+                    clean_text = re.sub(r'<tool_call>.*?</tool_call>', '', text_content, flags=re.DOTALL).strip()
+                    followup_prompt = f"""基于以下已生成的内容和联网搜索结果，完善并丰富内容，确保所有事实准确无误：
+
+已生成内容：
+{clean_text[:2000]}
+
+{search_results}
+
+请输出完善后的完整内容（JSON格式），确保所有史实、地理、文化细节准确。"""
+
+                    enhanced = await skill.execute_with_custom_prompt(
+                        custom_prompt=followup_prompt,
+                        requirements=task.payload,
+                        gateway=self.gateway,
+                        cost_profile=cost_profile,
+                        max_tokens=self._resolve_max_tokens(task.task_type, payload),
+                        temperature=self._resolve_temperature(task.task_type, payload) * 0.8 if self._resolve_temperature(task.task_type, payload) else 0.7,
+                    )
+                    result = enhanced
 
         if task.task_type == "scene_writer" and isinstance(result, dict):
             result["thinking_mode"] = thinking_mode
@@ -672,6 +781,7 @@ class CreatorAgent(BaseAgent):
 
         layer0 = await self.storage.get_layer0(project_id)
         world_config = await self.storage.get_world_config(project_id) or {}
+        project_config = await self.storage.get_project_config(project_id) or {}
 
         rag_query = self._build_rag_query(task)
         rag_results = await self.rag.retrieve(
@@ -683,16 +793,25 @@ class CreatorAgent(BaseAgent):
             "world_settings": self._format_world_settings(layer0, world_config),
             "rag_context": "\n---\n".join(r.text for r in rag_results),
             "chapter_info": "",
+            "project_brief": self._build_project_brief(project_config),
+            "sub_genre": project_config.get("sub_genre", ""),
+            "theme": project_config.get("theme", ""),
+            "core_contradiction": project_config.get("core_contradiction", ""),
+            "narrative_pov": project_config.get("narrative_pov", "third_person"),
             "_chinese_writing_standards": _CHINESE_WRITING_STANDARDS,
             "_interactive_game_writing": _INTERACTIVE_GAME_WRITING,
             "_scene_gen_standards": SCENE_GEN_UPGRADED_STANDARDS,
+            "web_search_tool_prompt": WEB_SEARCH_SYSTEM_PROMPT_ADDON if payload.get("enable_web_search", True) else "",
         }
 
         if task.task_type == "world_builder":
             context["user_requirements"] = payload.get("user_requirements", "")
             context["genre"] = payload.get("genre", layer0_value(layer0, "genre"))
             context["style"] = payload.get("style", layer0_value(layer0, "style"))
-            context["core_contradiction"] = payload.get("core_contradiction", layer0_value(layer0, "core_contradiction"))
+            context["sub_genre"] = payload.get("sub_genre", project_config.get("sub_genre", ""))
+            context["theme"] = payload.get("theme", project_config.get("theme", ""))
+            context["core_contradiction"] = payload.get("core_contradiction", layer0_value(layer0, "core_contradiction") or project_config.get("core_contradiction", ""))
+            context["narrative_pov"] = payload.get("narrative_pov", project_config.get("narrative_pov", "third_person"))
             context["target_word_count"] = payload.get("target_word_count", 50000)
             context["world_depth"] = payload.get("world_depth", 5)
 
@@ -706,6 +825,9 @@ class CreatorAgent(BaseAgent):
             context["character_depth"] = payload.get("character_depth", 5)
             context["target_word_count"] = payload.get("target_word_count", 50000)
             context["genre"] = payload.get("genre", layer0_value(layer0, "genre"))
+            context["sub_genre"] = payload.get("sub_genre", project_config.get("sub_genre", ""))
+            context["theme"] = payload.get("theme", project_config.get("theme", ""))
+            context["narrative_pov"] = payload.get("narrative_pov", project_config.get("narrative_pov", "third_person"))
 
         elif task.task_type == "relation_network_designer":
             world_setting_text = self._format_world_settings(layer0, world_config)
@@ -718,6 +840,9 @@ class CreatorAgent(BaseAgent):
                 chars = payload.get("characters", [])
             context["characters"] = json.dumps(chars, ensure_ascii=False) if isinstance(chars, list) else str(chars)
             context["genre"] = payload.get("genre", layer0_value(layer0, "genre"))
+            context["sub_genre"] = payload.get("sub_genre", project_config.get("sub_genre", ""))
+            context["theme"] = payload.get("theme", project_config.get("theme", ""))
+            context["narrative_pov"] = payload.get("narrative_pov", project_config.get("narrative_pov", "third_person"))
 
         elif task.task_type in ("outline_writer", "chapter_outliner"):
             world_setting_text = self._format_world_settings(layer0, world_config)
@@ -738,8 +863,16 @@ class CreatorAgent(BaseAgent):
             context["max_words_per_chapter"] = payload.get("max_words_per_chapter", 8000)
             context["plot_complexity"] = payload.get("plot_complexity", 5)
             context["genre"] = payload.get("genre", layer0_value(layer0, "genre"))
+            context["sub_genre"] = payload.get("sub_genre", project_config.get("sub_genre", ""))
+            context["theme"] = payload.get("theme", project_config.get("theme", ""))
+            context["core_contradiction"] = payload.get("core_contradiction", project_config.get("core_contradiction", ""))
+            context["narrative_pov"] = payload.get("narrative_pov", project_config.get("narrative_pov", "third_person"))
 
         elif task.task_type in ("scene_writer",):
+            if payload.get("fallback_mode") or payload.get("force_prose_format"):
+                context["force_prose_format"] = True
+                context["fallback_mode"] = True
+
             scene_id = payload.get("scene_id")
             if scene_id:
                 prev_scenes = await self.storage.get_prev_scenes(scene_id, count=2)
@@ -749,7 +882,11 @@ class CreatorAgent(BaseAgent):
                 if scene:
                     context["scene_code"] = scene.get("scene_code", "")
                     context["genre"] = payload.get("genre", layer0_value(layer0, "genre"))
-                    context["style"] = payload.get("style", layer0_value(layer0, "style"))
+                    context["style"] = payload.get("style", layer0_value(layer0, "style") or project_config.get("style", project_config.get("writing_style", "")))
+                    context["sub_genre"] = payload.get("sub_genre", project_config.get("sub_genre", ""))
+                    context["theme"] = payload.get("theme", project_config.get("theme", ""))
+                    context["core_contradiction"] = payload.get("core_contradiction", project_config.get("core_contradiction", ""))
+                    context["narrative_pov"] = payload.get("narrative_pov", project_config.get("narrative_pov", "third_person"))
                     context["scene_type"] = scene.get("scene_type", "dialogue")
                     context["location"] = scene.get("location", "未指定")
                     context["weather"] = scene.get("weather", "未指定")
@@ -796,7 +933,11 @@ class CreatorAgent(BaseAgent):
                     ch_num = selected_chapter.get("chapter_number", current_ch_idx + 1)
                     context["scene_code"] = f"CH{ch_num:03d}_S{scene_num:03d}"
                     context["genre"] = payload.get("genre", layer0_value(layer0, "genre"))
-                    context["style"] = payload.get("style", layer0_value(layer0, "style"))
+                    context["style"] = payload.get("style", layer0_value(layer0, "style") or project_config.get("style", project_config.get("writing_style", "")))
+                    context["sub_genre"] = payload.get("sub_genre", project_config.get("sub_genre", ""))
+                    context["theme"] = payload.get("theme", project_config.get("theme", ""))
+                    context["core_contradiction"] = payload.get("core_contradiction", project_config.get("core_contradiction", ""))
+                    context["narrative_pov"] = payload.get("narrative_pov", project_config.get("narrative_pov", "third_person"))
                     context["scene_type"] = "dialogue"
                     context["location"] = "根据章节大纲自由设定"
                     context["weather"] = "根据场景氛围自由设定"
@@ -817,7 +958,22 @@ class CreatorAgent(BaseAgent):
             if not chars:
                 chars = payload.get("characters", [])
             context["character_states"] = self._format_characters(chars)
-            # 确保关键字段始终存在
+
+            knowledge_ctx = payload.get("_knowledge_context", "")
+            if knowledge_ctx:
+                existing_rag = context.get("rag_context", "")
+                knowledge_block = (
+                    "========== 参考知识上下文 ==========\n"
+                    "【重要指令】以下提供的参考信息必须作为你生成内容的基础依据，"
+                    "确保生成的内容与这些参考信息保持高度一致。\n\n"
+                    f"{knowledge_ctx}\n"
+                    "========================================\n"
+                )
+                if existing_rag:
+                    context["rag_context"] = f"{knowledge_block}\n{existing_rag}"
+                else:
+                    context["rag_context"] = knowledge_block
+
             if not context.get("genre"):
                 context["genre"] = payload.get("genre", "互动影游")
             if not context.get("style"):
@@ -1037,6 +1193,23 @@ class CreatorAgent(BaseAgent):
                 return "\n\n".join(parts)
 
         return "\n\n".join(parts) if parts else "世界观尚未详细设定"
+
+    def _build_project_brief(self, project_config: dict) -> str:
+        if not project_config:
+            return "暂无项目级约束，请严格围绕当前场景任务、检索资料和既有设定写作。"
+
+        fields = [
+            ("体裁", project_config.get("genre", "")),
+            ("子类型", project_config.get("sub_genre", "")),
+            ("主题", project_config.get("theme", "")),
+            ("核心矛盾", project_config.get("core_contradiction", "")),
+            ("基调", project_config.get("tone", "")),
+            ("叙事视角", project_config.get("narrative_pov", "")),
+            ("风格", project_config.get("style", project_config.get("writing_style", ""))),
+            ("目标受众", project_config.get("target_audience", "")),
+        ]
+        parts = [f"- {label}: {value}" for label, value in fields if isinstance(value, str) and value.strip()]
+        return "\n".join(parts) if parts else "暂无项目级约束，请严格围绕当前场景任务、检索资料和既有设定写作。"
 
     MAX_SCENE_WORDS = 3000
     MAX_SCENES_PER_CHAPTER = 50

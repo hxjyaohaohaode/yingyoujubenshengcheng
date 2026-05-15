@@ -30,7 +30,7 @@ _IS_SQLITE = DATABASE_URL.startswith("sqlite")
 logger = logging.getLogger(__name__)
 
 AUTO_RUN_GLOBAL_TIMEOUT = 12 * 3600
-AUTO_RUN_STEP_TIMEOUT = 600
+AUTO_RUN_STEP_TIMEOUT = 900
 MAX_AUDIT_RETRIES = 3
 
 
@@ -555,6 +555,12 @@ class PipelineExecutor:
         except Exception as e:
             logger.warning("持久化审计记录失败: %s", str(e))
 
+    async def _db_keepalive(self):
+        try:
+            await self.db.execute(__import__("sqlalchemy").text("SELECT 1"))
+        except Exception as e:
+            logger.warning("数据库保活检测失败: %s", e)
+
     async def auto_run(self, project_id: str, force_regenerate: bool = False) -> dict:
         self._cancelled_projects.discard(project_id)
         self.force_regenerate = force_regenerate
@@ -625,6 +631,7 @@ class PipelineExecutor:
 
                 if status == "ok":
                     consecutive_failures = 0
+                    await self._db_keepalive()
                     await asyncio.sleep(0.3)
                     continue
 
@@ -647,6 +654,7 @@ class PipelineExecutor:
                     step_name = f"{step_info.get('agent', '?')}.{step_info.get('skill', '?')}"
                     error_msg = result.get("message", "未知错误")
                     dep_error = result.get("result", {}).get("dependency_error", False)
+                    is_retryable = result.get("result", {}).get("retryable", False)
 
                     if dep_error:
                         rollback_target = await self._find_missing_dep_rollback_target(project_id, error_msg)
@@ -666,8 +674,42 @@ class PipelineExecutor:
                             consecutive_failures = 0
                             continue
 
+                    if is_retryable:
+                        retry_wait = min(60, 10 * consecutive_failures)
+                        logger.warning(
+                            "步骤 %s 网络错误(可重试)，%ds后自动重试: %s",
+                            step_name, retry_wait, error_msg[:200]
+                        )
+                        await self._notify_progress(
+                            project_id, "网络重试", 0, 0, step_info.get('agent', ''), step_info.get('skill', ''),
+                            "retrying",
+                            f"网络断连，{retry_wait}s后自动重试: {error_msg[:100]}",
+                            0
+                        )
+                        retry_ok = await self._retry_from_failure(project_id)
+                        if retry_ok:
+                            await asyncio.sleep(retry_wait)
+                            consecutive_failures = 0
+                            continue
+                        else:
+                            logger.error("重试状态恢复失败，放弃重试")
+                            return result
+
                     if consecutive_failures < MAX_CONSECUTIVE_FAILURES:
                         wait_seconds = min(30, 5 * consecutive_failures)
+
+                        if step_info.get("skill") in ("scene_writer",) and consecutive_failures >= 2:
+                            logger.warning("scene_writer连续失败%d次，跳过当前场景继续", consecutive_failures)
+                            await self.state_machine.advance_step(project_id)
+                            await self._notify_progress(
+                                project_id, "跳过", 0, 0, step_info.get('agent', ''), step_info.get('skill', ''),
+                                "skipped",
+                                f"场景连续失败，已跳过并继续",
+                                0
+                            )
+                            consecutive_failures = 0
+                            continue
+
                         logger.warning(
                             "步骤 %s 失败(第%d次)，%ds后自动重试: %s",
                             step_name, consecutive_failures, wait_seconds, error_msg[:200]
@@ -910,53 +952,93 @@ class PipelineExecutor:
 
     async def _execute_step(self, project_id: str, template: PipelineTemplate,
                              phase: Phase, step: Step, state) -> dict:
-        try:
-            dep_ok, dep_msg = await self._check_step_dependencies(project_id, step.skill, state)
-            if not dep_ok:
-                logger.error("依赖检查失败: %s", dep_msg)
+        max_step_retries = 3
+        retry_delay_base = 5
+        for attempt in range(max_step_retries):
+            try:
+                dep_ok, dep_msg = await self._check_step_dependencies(project_id, step.skill, state)
+                if not dep_ok:
+                    logger.error("依赖检查失败: %s", dep_msg)
+                    return {
+                        "status": "failed",
+                        "error": dep_msg,
+                        "step": {"agent": step.agent, "skill": step.skill},
+                        "dependency_error": True,
+                    }
+
+                agent = get_agent(step.agent, self.gateway, self.rag, self.storage)
+
+                payload = self._build_payload(project_id, step, state)
+
+                task = AgentTask(
+                    task_id=f"{project_id}_{phase.name}_{step.skill}_{state.current_step_index}",
+                    agent_name=step.agent,
+                    task_type=step.skill,
+                    project_id=project_id,
+                    payload=payload,
+                    cost_profile=step.cost_profile,
+                )
+
+                result = await agent.execute(task)
+
+                if result.status in ("completed", "pass") and step.output_to:
+                    await self.state_machine.update_result_data(
+                        project_id, step.output_to, result.data
+                    )
+                    await self._persist_result(project_id, step.skill, result.data, state)
+
                 return {
-                    "status": "failed",
-                    "error": dep_msg,
-                    "step": {"agent": step.agent, "skill": step.skill},
-                    "dependency_error": True,
+                    "status": result.status,
+                    "data": result.data,
+                    "issues": result.issues,
                 }
 
-            agent = get_agent(step.agent, self.gateway, self.rag, self.storage)
+            except Exception as e:
+                import traceback
+                error_str = str(e)
+                is_network_error = any(kw in error_str.lower() for kw in [
+                    "timeout", "connection", "connect", "timed out",
+                    "connectionreset", "brokenpipe", "network",
+                    "all models failed", "read error",
+                ])
 
-            payload = self._build_payload(project_id, step, state)
+                if is_network_error and attempt < max_step_retries - 1:
+                    delay = retry_delay_base * (2 ** attempt)
+                    logger.warning(
+                        "步骤 %s.%s 网络错误(第%d次重试)，%ds后重试: %s",
+                        step.agent, step.skill, attempt + 1, delay, error_str[:200]
+                    )
+                    await self._notify_progress(
+                        project_id, phase.name,
+                        state.current_step_index if state else 0, len(phase.steps),
+                        step.agent, step.skill, "retrying",
+                        f"网络断连，{delay}s后自动重试({attempt + 1}/{max_step_retries})",
+                        self._calc_progress(template, state) if state else 0,
+                    )
+                    await asyncio.sleep(delay)
+                    continue
 
-            task = AgentTask(
-                task_id=f"{project_id}_{phase.name}_{step.skill}_{state.current_step_index}",
-                agent_name=step.agent,
-                task_type=step.skill,
-                project_id=project_id,
-                payload=payload,
-                cost_profile=step.cost_profile,
-            )
+                logger.error("Step execution failed: %s.%s - %s", step.agent, step.skill, str(e))
+                logger.error(traceback.format_exc())
 
-            result = await agent.execute(task)
+                if step.skill in ("scene_writer", "component_writer", "chapter_writer"):
+                    try:
+                        logger.info("尝试fallback模式生成: %s.%s", step.agent, step.skill)
+                        fallback_result = await self._execute_step_fallback(
+                            project_id, template, phase, step, state
+                        )
+                        if fallback_result:
+                            logger.info("fallback模式成功: %s.%s", step.agent, step.skill)
+                            return fallback_result
+                    except Exception as fb_err:
+                        logger.error("fallback模式也失败: %s", str(fb_err)[:200])
 
-            if result.status in ("completed", "pass") and step.output_to:
-                await self.state_machine.update_result_data(
-                    project_id, step.output_to, result.data
-                )
-                await self._persist_result(project_id, step.skill, result.data, state)
-
-            return {
-                "status": result.status,
-                "data": result.data,
-                "issues": result.issues,
-            }
-
-        except Exception as e:
-            import traceback
-            logger.error("Step execution failed: %s.%s - %s", step.agent, step.skill, str(e))
-            logger.error(traceback.format_exc())
-            return {
-                "status": "failed",
-                "error": str(e),
-                "step": {"agent": step.agent, "skill": step.skill},
-            }
+                return {
+                    "status": "failed",
+                    "error": str(e),
+                    "step": {"agent": step.agent, "skill": step.skill},
+                    "retryable": is_network_error,
+                }
 
     async def _persist_result(self, project_id: str, skill: str, data: dict, state):
         try:
@@ -1031,13 +1113,42 @@ class PipelineExecutor:
                         raise RuntimeError("character_designer 未生成有效角色数据，无法继续流水线")
 
             elif skill == "foreshadow_designer":
-                text = data.get("foreshadows", data.get("foreshadow_designs", ""))
-                parsed = self._extract_json(text)
+                fs_raw = data.get("foreshadows", data.get("foreshadow_designs", ""))
                 fs_list = None
-                if isinstance(parsed, list):
-                    fs_list = parsed
-                elif isinstance(parsed, dict):
-                    fs_list = parsed.get("foreshadows", parsed.get("伏笔", []))
+                if isinstance(fs_raw, list) and len(fs_raw) > 0:
+                    fs_list = fs_raw
+                elif isinstance(fs_raw, dict):
+                    fs_list = fs_raw.get("foreshadows", fs_raw.get("伏笔", []))
+                elif isinstance(fs_raw, str) and len(fs_raw) > 10:
+                    parsed = self._extract_json(fs_raw)
+                    if isinstance(parsed, list):
+                        fs_list = parsed
+                    elif isinstance(parsed, dict):
+                        fs_list = parsed.get("foreshadows", parsed.get("伏笔", []))
+
+                if not fs_list:
+                    for key in ("foreshadows", "foreshadow_designs"):
+                        val = data.get(key)
+                        if isinstance(val, list) and len(val) > 0:
+                            fs_list = val
+                            break
+                        elif isinstance(val, dict):
+                            inner = val.get("foreshadows", val.get("伏笔", []))
+                            if isinstance(inner, list) and len(inner) > 0:
+                                fs_list = inner
+                                break
+
+                if not fs_list:
+                    raw_text = ""
+                    for v in data.values():
+                        if isinstance(v, str) and len(v) > 100:
+                            raw_text = v
+                            break
+                    if raw_text:
+                        extracted = self._extract_foreshadows_from_text(raw_text)
+                        if extracted:
+                            fs_list = extracted
+
                 if isinstance(fs_list, list) and len(fs_list) > 0:
                     await self.storage.clear_foreshadows(project_id)
                     await self.storage.create_foreshadows_bulk(project_id, fs_list)
@@ -1047,26 +1158,9 @@ class PipelineExecutor:
                         await self._notify_data_changed(project_id, "foreshadow_created",
                                                          {"entity_id": fs.get("name", "")})
                 else:
-                    logger.warning("foreshadow_designer JSON解析失败，尝试从原始文本提取")
-                    raw_text = str(text) if text else ""
-                    if len(raw_text) > 100:
-                        extracted = self._extract_foreshadows_from_text(raw_text)
-                        if extracted and len(extracted) > 0:
-                            await self.storage.clear_foreshadows(project_id)
-                            await self.storage.create_foreshadows_bulk(project_id, extracted)
-                            await self.state_machine.update_result_data(project_id, "foreshadows", extracted)
-                            await self.state_machine.update_result_data(project_id, "layer0_foreshadows_built", True)
-                            for fs in extracted:
-                                await self._notify_data_changed(project_id, "foreshadow_created",
-                                                                 {"entity_id": fs.get("name", "")})
-                        else:
-                            logger.warning("foreshadow_designer 文本提取也失败，使用空伏笔列表继续")
-                            await self.state_machine.update_result_data(project_id, "foreshadows", [])
-                            await self.state_machine.update_result_data(project_id, "layer0_foreshadows_built", True)
-                    else:
-                        logger.warning("foreshadow_designer 原始文本过短，使用空伏笔列表")
-                        await self.state_machine.update_result_data(project_id, "foreshadows", [])
-                        await self.state_machine.update_result_data(project_id, "layer0_foreshadows_built", True)
+                    logger.warning("foreshadow_designer 未生成有效伏笔数据，使用空伏笔列表继续流水线")
+                    await self.state_machine.update_result_data(project_id, "foreshadows", [])
+                    await self.state_machine.update_result_data(project_id, "layer0_foreshadows_built", True)
 
             elif skill in ("outline_writer", "chapter_outliner"):
                 text = data.get("outline", data.get("chapters", data.get("outlines", "")))
@@ -1192,9 +1286,15 @@ class PipelineExecutor:
                 await self._notify_data_changed(project_id, "foreshadow_recovery_audit_completed", {})
 
             elif skill == "foreshadow_reaction":
-                reaction_data = data.get("reactions", data.get("chemical_reactions", ""))
-                if reaction_data:
-                    await self.state_machine.update_result_data(project_id, "foreshadow_reactions", reaction_data)
+                reactions = data.get("reactions", data.get("chemical_reactions", data.get("reaction_pairs", [])))
+                if isinstance(reactions, list) and len(reactions) > 0:
+                    await self.state_machine.update_result_data(project_id, "foreshadow_reactions", reactions)
+                reaction_analysis = data.get("reaction_analysis", "")
+                if reaction_analysis:
+                    await self.state_machine.update_result_data(project_id, "reaction_analysis", reaction_analysis)
+                network_strength = data.get("network_strength", data.get("overall_strength", None))
+                if network_strength is not None:
+                    await self.state_machine.update_result_data(project_id, "network_strength", network_strength)
                 await self.state_machine.update_result_data(project_id, "layer0_foreshadow_reaction_built", True)
                 await self._notify_data_changed(project_id, "foreshadow_updated", {})
 
@@ -1994,6 +2094,15 @@ class PipelineExecutor:
     def _build_payload(self, project_id: str, step: Step, state) -> dict:
         payload = {}
 
+        intent_data = state.result_data.get("intent_analysis") or state.result_data.get("layer0", {}).get("intent_analysis")
+        search_data = state.result_data.get("search_results") or state.result_data.get("layer0", {}).get("search_results")
+        if intent_data:
+            payload["intent_analysis"] = intent_data
+        if search_data:
+            payload["search_results"] = search_data
+
+        payload["project_id"] = project_id
+
         for source in step.input_from:
             if source == "user_input":
                 payload["project_id"] = project_id
@@ -2083,3 +2192,44 @@ class PipelineExecutor:
         payload["audit_fix_instructions"] = state.result_data.get("audit_fix_instructions", "")
 
         return payload
+
+    async def _execute_step_fallback(self, project_id: str, template: PipelineTemplate,
+                                      phase: Phase, step: Step, state) -> dict | None:
+        try:
+            agent = get_agent(step.agent, self.gateway, self.rag, self.storage)
+            payload = self._build_payload(project_id, step, state)
+            payload["fallback_mode"] = True
+            payload["force_prose_format"] = True
+
+            task = AgentTask(
+                task_id=f"{project_id}_{phase.name}_{step.skill}_fallback_{state.current_step_index}",
+                agent_name=step.agent,
+                task_type=step.skill,
+                project_id=project_id,
+                payload=payload,
+                cost_profile="economy",
+            )
+
+            result = await agent.execute(task)
+
+            if result.status in ("completed", "pass"):
+                if step.output_to:
+                    await self.state_machine.update_result_data(
+                        project_id, step.output_to, result.data
+                    )
+                    await self._persist_result(project_id, step.skill, result.data, state)
+
+                data = result.data if isinstance(result.data, dict) else {}
+                data["_fallback_generated"] = True
+                data["_quality"] = "draft"
+
+                return {
+                    "status": result.status,
+                    "data": data,
+                    "issues": result.issues or ["fallback模式生成"],
+                }
+
+            return None
+        except Exception as e:
+            logger.warning("fallback模式执行失败: %s", str(e)[:200])
+            return None

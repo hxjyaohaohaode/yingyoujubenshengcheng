@@ -218,7 +218,7 @@ class TestConfigRecommender:
             assert min_capacity <= word_count * 2, \
                 f"{label}: 最小容量({min_capacity})不应远超目标字数({word_count})"
 
-            print(f"{label}: {rec.chapter_count}章 × {rec.max_words_per_chapter}字 = {max_capacity:,}字容量 ✓")
+            print(f"{label}: {rec.chapter_count}章 × {rec.max_words_per_chapter}字 = {max_capacity:,}字容量 [通过]")
 
 
 if __name__ == "__main__":

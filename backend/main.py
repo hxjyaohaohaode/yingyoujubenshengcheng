@@ -17,7 +17,7 @@ from config import CORS_ORIGINS, APP_ENV, REDIS_URL, DATABASE_URL
 from database import init_db, close_db, async_session_factory, check_db_health
 from middleware.rate_limit import RateLimitMiddleware
 from middleware.audit_log import AuditLogger, AuditLoggingMiddleware
-from api import projects, characters, foreshadows, scenes, chapters, ai, export, pipeline, templates, script_viz
+from api import projects, characters, foreshadows, scenes, chapters, ai, export, pipeline, templates, script_viz, upload, search, knowledge
 from websocket.router import router as ws_router
 import models
 import core.pipeline.pipeline_state_model
@@ -85,6 +85,35 @@ async def lifespan(app: FastAPI):
         logger.warning(f"pipeline_state 建表跳过: {e}")
 
     try:
+        from sqlalchemy import text as _txt
+        async with async_session_factory() as sess:
+            await sess.execute(_txt("""
+                CREATE TABLE IF NOT EXISTS project_files (
+                    id VARCHAR(36) PRIMARY KEY,
+                    project_id VARCHAR(36) NOT NULL,
+                    filename VARCHAR(255) NOT NULL,
+                    file_type VARCHAR(20) NOT NULL DEFAULT '',
+                    file_size INTEGER NOT NULL DEFAULT 0,
+                    page_count INTEGER NOT NULL DEFAULT 1,
+                    text_preview TEXT DEFAULT '',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+            await sess.execute(_txt("""
+                CREATE TABLE IF NOT EXISTS search_cache (
+                    cache_key TEXT PRIMARY KEY,
+                    entity_name TEXT NOT NULL DEFAULT '',
+                    result_json TEXT NOT NULL DEFAULT '[]',
+                    searched_at TEXT NOT NULL DEFAULT '',
+                    ttl INTEGER NOT NULL DEFAULT 86400
+                )
+            """))
+            await sess.commit()
+        logger.info("project_files / search_cache 表确认完成")
+    except Exception as e:
+        logger.warning(f"project_files / search_cache 建表跳过: {e}")
+
+    try:
         if "sqlite" in DATABASE_URL:
             import sqlite3
             db_path = DATABASE_URL.replace("sqlite+aiosqlite:///", "").replace("sqlite:///", "")
@@ -143,6 +172,20 @@ async def lifespan(app: FastAPI):
                 conn.execute("ALTER TABLE scenes ADD COLUMN suggestions TEXT DEFAULT '[]'")
                 conn.commit()
                 logger.info("数据库迁移：已为 scenes 表添加 suggestions 列")
+
+            conn.execute("UPDATE scenes SET is_wow_moment = 0 WHERE is_wow_moment IS NULL")
+            conn.execute("UPDATE scenes SET version = 1 WHERE version IS NULL")
+            conn.execute("UPDATE scenes SET human_reviewed = 0 WHERE human_reviewed IS NULL")
+            conn.execute("UPDATE scenes SET emotion_level = 5 WHERE emotion_level IS NULL")
+            conn.execute("UPDATE scenes SET status = 'draft' WHERE status IS NULL")
+            conn.execute("UPDATE scenes SET dialogue = '[]' WHERE dialogue IS NULL")
+            conn.execute("UPDATE scenes SET actions = '[]' WHERE actions IS NULL")
+            conn.execute("UPDATE scenes SET foreshadow_ops = '[]' WHERE foreshadow_ops IS NULL")
+            conn.execute("UPDATE scenes SET choices = '[]' WHERE choices IS NULL")
+            conn.execute("UPDATE scenes SET characters_involved = '[]' WHERE characters_involved IS NULL")
+            conn.execute("UPDATE scenes SET audit_reports = '[]' WHERE audit_reports IS NULL")
+            conn.commit()
+            logger.info("数据库迁移：已修复 scenes 表 NULL 值")
 
             conn.close()
     except Exception as e:
@@ -227,6 +270,9 @@ app.include_router(pipeline.router, prefix="/api", tags=["pipeline"])
 app.include_router(pipeline.public_router, prefix="/api", tags=["pipeline"])
 app.include_router(templates.router, prefix="/api", tags=["templates"])
 app.include_router(script_viz.router, prefix="/api", tags=["script-viz"])
+app.include_router(upload.router, prefix="/api", tags=["upload"])
+app.include_router(search.router, prefix="/api", tags=["search"])
+app.include_router(knowledge.router, prefix="/api", tags=["knowledge"])
 app.include_router(ws_router)
 
 

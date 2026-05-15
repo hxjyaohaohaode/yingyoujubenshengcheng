@@ -565,12 +565,24 @@ async def recommend_config(
     payload = data or {}
     target_word_count = payload.get("target_word_count", 50000)
     genre = payload.get("genre", "")
+    sub_genre = payload.get("sub_genre", "")
+    core_contradiction = payload.get("core_contradiction", "")
+    theme = payload.get("theme", "")
+    tone = payload.get("tone", "neutral")
+    narrative_pov = payload.get("narrative_pov", "third_person")
+    style = payload.get("style", "")
     work_mode = payload.get("work_mode", "standard")
     player_count = payload.get("player_count", "single")
 
     recommendation = ConfigRecommender.recommend(
         target_word_count=target_word_count,
         genre=genre,
+        sub_genre=sub_genre,
+        core_contradiction=core_contradiction,
+        theme=theme,
+        tone=tone,
+        narrative_pov=narrative_pov,
+        style=style,
         work_mode=work_mode,
         player_count=player_count,
     )

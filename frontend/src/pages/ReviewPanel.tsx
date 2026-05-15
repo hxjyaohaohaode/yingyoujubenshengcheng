@@ -13,6 +13,7 @@ import {
 import { useProjectStore } from '../stores/projectStore'
 import { useAgentStore } from '../stores/agentStore'
 import { api, scenesApi, type Scene } from '../api/client'
+import NarrationRenderer from '../components/NarrationRenderer'
 
 const { TextArea } = Input
 
@@ -171,6 +172,8 @@ export default function ReviewPanel() {
         return transformed[0].id
       })
     } catch (err: unknown) {
+      const e = err as any
+      if (e?.name === 'AbortError' || e?.silent || e?.detail === '请求已取消') return
       const message = err instanceof Error ? err.message : '获取审核列表失败'
       setError(message)
       notification.error({
@@ -326,7 +329,7 @@ export default function ReviewPanel() {
           <Empty
             description={
               <span className="text-muted">
-                所有场景已审核完毕，暂无待审核内容 🎉
+                所有场景已审核完毕，暂无待审核内容
                 <br />
                 <span className="text-xs">项目的每一个场景都经过了严格把关，这是创作质量的重要保障</span>
               </span>
@@ -355,36 +358,36 @@ export default function ReviewPanel() {
         </Button>
       </div>
 
-      <Row gutter={8} className="mb-2 shrink-0">
+      <Row gutter={12} className="mb-3 shrink-0">
         <Col span={6}>
-          <Card size="small" className="text-center">
+          <Card size="small" className="text-center border-blue-200 dark:border-blue-800" styles={{ body: { padding: '8px 12px' } }}>
             <div className="text-2xl font-bold text-blue-500">{stats.pending}</div>
-            <div className="text-xs text-gray-400">待审核</div>
+            <div className="text-xs text-gray-400 mt-0.5">待审核</div>
           </Card>
         </Col>
         <Col span={6}>
-          <Card size="small" className="text-center">
+          <Card size="small" className="text-center border-yellow-200 dark:border-yellow-800" styles={{ body: { padding: '8px 12px' } }}>
             <div className="text-2xl font-bold text-yellow-500">{stats.needsHuman}</div>
-            <div className="text-xs text-gray-400">需人工</div>
+            <div className="text-xs text-gray-400 mt-0.5">需人工</div>
           </Card>
         </Col>
         <Col span={6}>
-          <Card size="small" className="text-center">
+          <Card size="small" className="text-center border-red-200 dark:border-red-800" styles={{ body: { padding: '8px 12px' } }}>
             <div className="text-2xl font-bold text-red-500">{stats.rejected}</div>
-            <div className="text-xs text-gray-400">已封驳</div>
+            <div className="text-xs text-gray-400 mt-0.5">已封驳</div>
           </Card>
         </Col>
         <Col span={6}>
-          <Card size="small" className="text-center">
+          <Card size="small" className="text-center border-green-200 dark:border-green-800" styles={{ body: { padding: '8px 12px' } }}>
             <div className="text-2xl font-bold text-green-500">{stats.passed}</div>
-            <div className="text-xs text-gray-400">已通过</div>
+            <div className="text-xs text-gray-400 mt-0.5">已通过</div>
           </Card>
         </Col>
       </Row>
 
-      <div className="flex gap-2 flex-1 min-h-0">
-        <div className="w-[300px] shrink-0 overflow-auto flex flex-col gap-1">
-          <div className="text-xs text-gray-400 font-semibold px-1">
+      <div className="flex gap-3 flex-1 min-h-0">
+        <div style={{ width: 280, flexShrink: 0, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 4, paddingRight: 4 }}>
+          <div className="text-xs text-gray-400 font-semibold px-1 mb-1">
             待审核场景 ({scenes.length})
           </div>
           {scenes.map(sc => {
@@ -426,7 +429,7 @@ export default function ReviewPanel() {
                 )}
                 {sc.status === 'needs_human' && (
                   <div className="mt-1">
-                    <Tag color="red" className="text-[10px]">⚠ 需人类介入</Tag>
+                    <Tag color="red" className="text-[10px]">需人类介入</Tag>
                   </div>
                 )}
               </div>
@@ -434,7 +437,7 @@ export default function ReviewPanel() {
           })}
         </div>
 
-        <div className="flex-1 flex flex-col gap-2 overflow-auto">
+        <div className="flex-1 flex flex-col gap-3 overflow-auto min-w-0">
           {!selectedScene ? (
             <Card className="flex-1 flex items-center justify-center">
               <Empty description="选择左侧场景开始审核" />
@@ -470,11 +473,11 @@ export default function ReviewPanel() {
                   </Space>
                 }
               >
-                <div className="text-xs text-gray-600 dark:text-gray-300 whitespace-pre-wrap leading-relaxed bg-gray-50 dark:bg-slate-800 p-2 rounded">
-                  {selectedScene.narration_preview}
+                <div className="bg-gray-50 dark:bg-slate-800 p-3 rounded max-h-[300px] overflow-auto">
+                  <NarrationRenderer content={selectedScene.narration_preview} compact showMeta={false} />
                   {selectedScene.narration.length > 200 && (
                     <span
-                      className="text-blue-500 ml-1 cursor-pointer hover:underline"
+                      className="text-blue-500 ml-1 cursor-pointer hover:underline text-xs"
                       onClick={() => setShowFullContent(true)}
                     >
                       ... 点击展开全文
@@ -657,7 +660,7 @@ export default function ReviewPanel() {
                           {selectedScene.rejection_history.length >= 3 && (
                             <div className="bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded p-2 mt-2">
                               <div className="text-xs text-red-600 font-semibold mb-1">
-                                ⚠ 该场景已被连续封驳
+                                该场景已被连续封驳
                                 {selectedScene.rejection_history.length}次
                               </div>
                               <div className="text-xs text-red-500">
@@ -787,8 +790,11 @@ export default function ReviewPanel() {
         width={720}
         styles={{ body: { maxHeight: '70vh', overflow: 'auto' } }}
       >
-        <div className="whitespace-pre-wrap leading-relaxed text-sm text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-slate-800 p-4 rounded">
-          {selectedScene?.narration || '暂无内容'}
+        <div className="bg-gray-50 dark:bg-slate-800 p-5 rounded">
+          {selectedScene?.narration
+            ? <NarrationRenderer content={selectedScene.narration} showMeta={true} />
+            : <div className="text-gray-400 text-center py-8">暂无内容</div>
+          }
         </div>
         {selectedScene && selectedScene.characters.length > 0 && (
           <div className="mt-3 flex items-center gap-2 text-xs text-gray-400 flex-wrap">

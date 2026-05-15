@@ -6,6 +6,8 @@ from core.agent.base import BaseAgent, AgentTask, AgentResult
 from core.agent.skill import Skill
 from core.agent.registry import register_agent
 from core.agent.git_doc_manager import GitDocumentManager
+from core.search.web_search import WebSearchService
+from core.context.intent_models import IntentResult, EntityInfo
 
 logger = logging.getLogger(__name__)
 
@@ -35,16 +37,23 @@ DOC_MANAGER_SKILL.intent = "planning"
 DOC_MANAGER_SKILL.prompt_template = "Git版本控制的场景文档管理。"
 DOC_MANAGER_SKILL.output_parser = lambda text: {"doc": text}
 
+WEB_SEARCH_SKILL = Skill()
+WEB_SEARCH_SKILL.name = "web_search"
+WEB_SEARCH_SKILL.intent = "search"
+WEB_SEARCH_SKILL.prompt_template = "联网搜索相关背景知识，获取实体百科信息。"
+WEB_SEARCH_SKILL.output_parser = lambda text: {"search": text}
+
 
 @register_agent
 class MaterialAgent(BaseAgent):
     name = "material"
-    description = "场景上下文包构建、素材管理、文档查询、多层级信息整合、Git版本控制"
+    description = "场景上下文包构建、素材管理、文档查询、多层级信息整合、Git版本控制、联网搜索"
     skills = {
         "rag_retriever": RAG_RETRIEVER_SKILL,
         "context_builder": CONTEXT_BUILDER_SKILL,
         "index_query": INDEX_QUERY_SKILL,
         "doc_manager": DOC_MANAGER_SKILL,
+        "web_search": WEB_SEARCH_SKILL,
     }
 
     async def execute(self, task: AgentTask) -> AgentResult:
@@ -56,6 +65,9 @@ class MaterialAgent(BaseAgent):
         rag_query = task.payload.get("rag_query", f"场景 {scene_id or '全景'} 上下文需求")
 
         try:
+            if task.task_type == "web_search":
+                return await self._handle_web_search(project_id, task.payload)
+
             if context_type == "index_query":
                 return await self._handle_index_query(project_id, task.payload)
 
@@ -96,6 +108,40 @@ class MaterialAgent(BaseAgent):
                 status="failed",
                 data={"error": str(e)},
                 issues=[str(e)],
+            )
+
+    async def _handle_web_search(self, project_id: str, payload: dict) -> AgentResult:
+        from database import async_session_factory
+        layer0 = payload.get("layer0", {})
+        intent_data = payload.get("intent_analysis") or layer0.get("intent_analysis", {})
+        if isinstance(intent_data, dict) and "entities" in intent_data:
+            entities = [EntityInfo(**e) if isinstance(e, dict) else e
+                        for e in intent_data.get("entities", [])]
+        else:
+            entities = []
+
+        user_input = payload.get("user_requirements", payload.get("user_input", ""))
+
+        try:
+            async with async_session_factory() as session:
+                search_service = WebSearchService(session, self.gateway)
+                cards = await search_service.batch_search(entities, user_input)
+                cards_data = [
+                    {"entity_name": c.entity_name, "entity_type": c.entity_type,
+                     "summary": c.summary, "key_facts": c.key_facts[:5],
+                     "sources": c.sources[:3]}
+                    for c in cards
+                ]
+            return AgentResult(
+                status="completed",
+                data={"search_results": cards_data},
+            )
+        except Exception as e:
+            logger.error("联网搜索失败: %s", str(e))
+            return AgentResult(
+                status="completed",
+                data={"search_results": []},
+                issues=[f"搜索失败: {str(e)[:100]}"],
             )
 
     def _validate(self, task: AgentTask):

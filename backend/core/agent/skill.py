@@ -17,6 +17,7 @@ CRITICAL_VARIABLES: Set[str] = {
     "project_id", "user_requirements", "genre", "style",
     "story_context", "scene_context", "characters",
     "core_contradiction", "target_word_count",
+    "foreshadow_data", "rendered_prompt",
 }
 
 
@@ -43,6 +44,34 @@ class Skill:
         invoke_kwargs = {
             "intent": self.intent,
             "messages": [{"role": "user", "content": prompt}],
+            "cost_profile": cost_profile,
+        }
+        if self.model is not None:
+            invoke_kwargs["model_override"] = self.model
+        if max_tokens is not None:
+            invoke_kwargs["max_tokens"] = max_tokens  # type: ignore
+        if temperature is not None:
+            invoke_kwargs["temperature"] = temperature  # type: ignore
+
+        response = await gateway.invoke(**invoke_kwargs)
+
+        return self.output_parser(response.content)
+
+    def render_prompt(self, context: dict, requirements: dict) -> str:
+        return self._render(context, requirements)
+
+    async def execute_with_custom_prompt(
+        self,
+        custom_prompt: str,
+        requirements: dict,
+        gateway: ModelGateway,
+        cost_profile: str = "balanced",
+        max_tokens: int | None = None,
+        temperature: float | None = None,
+    ) -> dict:
+        invoke_kwargs = {
+            "intent": self.intent,
+            "messages": [{"role": "user", "content": custom_prompt}],
             "cost_profile": cost_profile,
         }
         if self.model is not None:

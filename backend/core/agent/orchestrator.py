@@ -5,6 +5,8 @@ from collections import defaultdict
 from core.agent.base import BaseAgent, AgentTask, AgentResult, layer0_value
 from core.agent.skill import Skill
 from core.agent.registry import register_agent
+from core.context.intent_analyzer import IntentAnalyzer
+from core.context.intent_models import IntentResult
 
 logger = logging.getLogger(__name__)
 
@@ -115,11 +117,23 @@ CONFLICT_ARBITER_SKILL.model = "ds-reasoner"
 CONFLICT_ARBITER_SKILL.prompt_template = "检测Agent间冲突：连续3次封驳→标记需人类介入。"
 CONFLICT_ARBITER_SKILL.output_parser = lambda text: {"arbitration": text}
 
+INTENT_ANALYSIS_SKILL = Skill()
+INTENT_ANALYSIS_SKILL.name = "intent_analysis"
+INTENT_ANALYSIS_SKILL.intent = "analyze.structure"
+INTENT_ANALYSIS_SKILL.model = "ds-reasoner"
+INTENT_ANALYSIS_SKILL.prompt_template = """分析用户的剧本创作意图，识别关键实体。
+
+用户输入：{user_input}
+
+返回JSON：
+{{"genre":"题材","style":"风格","entities":[{{"name":"名称","type":"character/location/event/concept","importance":0.0-1.0}}],"key_events":["事件"],"era":"时代","world_elements":["要素"],"confidence":0.0-1.0,"guiding_questions":[],"need_search":true/false}}"""
+INTENT_ANALYSIS_SKILL.output_parser = lambda text: {"intent": text}
+
 
 @register_agent
 class OrchestratorAgent(BaseAgent):
     name = "orchestrator"
-    description = "项目生命周期管理、优先级调度(锚点优先/伏笔优先/情感曲线判断)、节奏监控(连续高→缓冲/连续低→引爆)、冲突仲裁(连续3次封驳→人类介入)"
+    description = "项目生命周期管理、优先级调度(锚点优先/伏笔优先/情感曲线判断)、节奏监控(连续高→缓冲/连续低→引爆)、冲突仲裁(连续3次封驳→人类介入)、意图分析"
     skills = {
         "plan_project": PLAN_PROJECT_SKILL,
         "analyze_progress": ANALYZE_PROGRESS_SKILL,
@@ -127,6 +141,7 @@ class OrchestratorAgent(BaseAgent):
         "priority_scheduler": PRIORITY_SCHEDULER_SKILL,
         "rhythm_monitor": RHYTHM_MONITOR_SKILL,
         "conflict_arbiter": CONFLICT_ARBITER_SKILL,
+        "intent_analysis": INTENT_ANALYSIS_SKILL,
     }
 
     def __init__(self, *args, **kwargs):
@@ -153,6 +168,9 @@ class OrchestratorAgent(BaseAgent):
 
         if operation == "check_escalation":
             return await self._check_escalation(task.project_id, task.payload)
+
+        if task.task_type == "intent_analysis":
+            return await self._handle_intent_analysis(task)
 
         context = await self._build_context(task)
         skill = self._select_skill(task.task_type)
@@ -356,6 +374,27 @@ class OrchestratorAgent(BaseAgent):
                 "needs_attention": len(escalation_items) > 0,
             },
         )
+
+    async def _handle_intent_analysis(self, task: AgentTask) -> AgentResult:
+        user_input = task.payload.get("user_requirements", task.payload.get("user_input", ""))
+        analyzer = IntentAnalyzer(self.gateway)
+        try:
+            intent = await analyzer.analyze(user_input)
+            return AgentResult(
+                status="completed",
+                data={"intent_analysis": intent.to_dict()},
+            )
+        except Exception as e:
+            logger.error("意图分析失败: %s", str(e))
+            return AgentResult(
+                status="completed",
+                data={"intent_analysis": {
+                    "genre": "", "entities": [], "key_events": [],
+                    "confidence": 0.3, "need_search": False,
+                    "guiding_questions": ["请更具体地描述您的故事需求"],
+                }},
+                issues=[f"意图分析失败: {str(e)[:100]}"],
+            )
 
     async def _build_context(self, task: AgentTask) -> dict:
         project_id = task.project_id

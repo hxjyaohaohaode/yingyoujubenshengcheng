@@ -16,6 +16,7 @@ import os
 import httpx
 import hashlib
 import json
+import asyncio
 import logging
 from dataclasses import dataclass
 from typing import Optional
@@ -23,6 +24,9 @@ from typing import Optional
 from .router import ModelRouter, CostProfile, COST_PROFILES
 
 logger = logging.getLogger(__name__)
+
+LLM_MAX_RETRIES = 3
+LLM_RETRY_DELAY_BASE = 2
 
 
 @dataclass
@@ -184,12 +188,25 @@ class ModelGateway:
 
         last_error = None
         for m in models_to_try:
-            try:
-                return await self._call_model(m, body)
-            except Exception as e:
-                last_error = e
-                logger.warning("模型 %s 调用失败: %s，尝试下一个", m, str(e)[:200])
-                continue
+            for attempt in range(LLM_MAX_RETRIES):
+                try:
+                    return await self._call_model(m, body)
+                except (httpx.TimeoutException, httpx.ConnectError, httpx.ReadError,
+                        httpx.WriteError, httpx.PoolTimeout, httpx.ConnectTimeout) as e:
+                    last_error = e
+                    if attempt < LLM_MAX_RETRIES - 1:
+                        delay = LLM_RETRY_DELAY_BASE * (2 ** attempt)
+                        logger.warning(
+                            "模型 %s 网络超时/断连(第%d次重试)，%ds后重试: %s",
+                            m, attempt + 1, delay, str(e)[:200]
+                        )
+                        await asyncio.sleep(delay)
+                        continue
+                    logger.warning("模型 %s 网络重试%d次均失败: %s", m, LLM_MAX_RETRIES, str(e)[:200])
+                except Exception as e:
+                    last_error = e
+                    logger.warning("模型 %s 调用失败: %s，尝试下一个模型", m, str(e)[:200])
+                    break
 
         raise RuntimeError(
             f"All models failed for intent '{intent}': {last_error}"
@@ -212,7 +229,7 @@ class ModelGateway:
             f"{config['base_url']}/chat/completions",
             json={**body, "model": api_model_name},
             headers={"Authorization": f"Bearer {api_key}"},
-            timeout=300,
+            timeout=httpx.Timeout(connect=30.0, read=600.0, write=30.0, pool=30.0),
         )
         resp.raise_for_status()
         data = resp.json()
@@ -263,7 +280,7 @@ class ModelGateway:
     def _get_client(self, base_url: str) -> httpx.AsyncClient:
         if base_url not in self._clients:
             self._clients[base_url] = httpx.AsyncClient(
-                timeout=300,
+                timeout=httpx.Timeout(connect=30.0, read=600.0, write=30.0, pool=30.0),
                 limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
             )
         return self._clients[base_url]

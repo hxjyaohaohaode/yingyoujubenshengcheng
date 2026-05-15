@@ -620,3 +620,38 @@
   background: rgba(15, 23, 42, 0.85);
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
+
+/* ========== ReactFlow Dark Mode Overrides ========== */
+.dark .react-flow__controls {
+  background: var(--color-surface);
+  border-color: var(--color-border);
+  box-shadow: var(--shadow-md);
+}
+
+.dark .react-flow__controls-button {
+  background: var(--color-surface);
+  border-bottom-color: var(--color-border);
+  fill: var(--color-muted);
+}
+
+.dark .react-flow__controls-button:hover {
+  background: var(--color-surface2);
+}
+
+.dark .react-flow__controls-button svg {
+  fill: var(--color-muted);
+}
+
+.dark .react-flow__minimap {
+  background: var(--color-surface2);
+  border: 1px solid var(--color-border);
+}
+
+.dark .react-flow__minimap-mask {
+  fill: rgba(11, 17, 32, 0.6);
+}
+
+.dark .react-flow__attribution {
+  background: var(--color-surface);
+  color: var(--color-muted);
+}

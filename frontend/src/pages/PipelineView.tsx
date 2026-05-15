@@ -7,7 +7,33 @@ import {
 import { api, pipelineApi } from '../api/client'
 import { useProjectStore } from '../stores/projectStore'
 import { useAITaskStore } from '../stores/aiTaskStore'
+import { AGENT_NAME_MAP } from '../stores/agentStore'
 import { eventBus, DataEvents } from '../services/eventBus'
+
+const PHASE_NAME_MAP: Record<string, string> = {
+  world_building: '世界观构建',
+  character_design: '角色设计',
+  chapter_outline: '章节大纲',
+  scene_writing: '场景写作',
+  foreshadow_design: '伏笔设计',
+  review: '审核优化',
+  export: '导出发布',
+}
+
+const SKILL_NAME_MAP: Record<string, string> = {
+  world_builder: '世界观构建',
+  character_designer: '角色设计',
+  chapter_outliner: '章节规划',
+  outline_writer: '大纲编写',
+  scene_writer: '场景编写',
+  foreshadow_designer: '伏笔设计',
+  relation_network_designer: '关系网络',
+  choice_designer: '选项设计',
+  state_updater: '状态更新',
+  quality_checker: '质量检查',
+  full_audit: '全面审计',
+  export_render: '导出渲染',
+}
 
 interface PipelineStatus {
   status: string
@@ -47,10 +73,16 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.
 
 const STEP_STATUS: Record<string, { label: string; color: string }> = {
   completed: { label: '完成', color: '#10b981' },
+  success: { label: '成功', color: '#10b981' },
   failed: { label: '失败', color: '#ef4444' },
   running: { label: '运行中', color: '#3b82f6' },
   rejected: { label: '已驳回', color: '#f59e0b' },
   pending: { label: '等待中', color: '#6b7280' },
+  queued: { label: '排队中', color: '#1890ff' },
+  retrying: { label: '重试中', color: '#faad14' },
+  cancelled: { label: '已取消', color: '#8c8c8c' },
+  timeout: { label: '超时', color: '#ef4444' },
+  unknown: { label: '未知', color: '#6b7280' },
 }
 
 export default function PipelineView() {
@@ -331,7 +363,7 @@ export default function PipelineView() {
             <div>
               <p className="font-semibold text-amber-700 dark:text-amber-400">后端服务未连接</p>
               <p className="text-sm text-amber-600 dark:text-amber-500 mt-1">
-                请启动后端服务: <code className="px-1 py-0.5 bg-amber-100 dark:bg-amber-900/30 rounded text-xs">cd script-engine/backend && python -m uvicorn main:app --port 8000 --reload</code>
+                请启动后端服务: <code className="px-1 py-0.5 bg-amber-100 dark:bg-amber-900/30 rounded text-xs">cd script-engine/backend && python -m uvicorn main:app --port 8001 --reload</code>
               </p>
             </div>
             <Button size="small" icon={<ReloadOutlined />} onClick={() => { backendDownRef.current = false; setBackendDown(false); fetchStatus() }}>
@@ -566,7 +598,7 @@ export default function PipelineView() {
                 >
                   <div className="text-sm font-semibold mb-1">
                     {phase.name}
-                    {phase.human_gate && <span className="text-xs opacity-70"> 🔒</span>}
+                    {phase.human_gate && <span className="text-xs opacity-70"> [锁定]</span>}
                   </div>
                   <div className="text-xs opacity-70">{phase.steps.length} 步骤</div>
                 </div>
@@ -592,10 +624,10 @@ export default function PipelineView() {
                   <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: st.color }} />
                   <div className="flex-1 min-w-0">
                     <span className="font-semibold text-sm text-gray-800 dark:text-gray-200">
-                      {task.phase} / {task.agent}.{task.skill}
+                      {PHASE_NAME_MAP[task.phase] || task.phase} / {AGENT_NAME_MAP[task.agent] || task.agent}.{SKILL_NAME_MAP[task.skill] || task.skill}
                     </span>
                     <span className="text-xs text-gray-400 dark:text-gray-500 ml-2">
-                      {task.completed_at ? new Date(task.completed_at).toLocaleTimeString() : '-'}
+                      {task.completed_at ? new Date(task.completed_at).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '-'}
                     </span>
                   </div>
                   <Tag color={st.color} className="text-xs">{st.label}</Tag>

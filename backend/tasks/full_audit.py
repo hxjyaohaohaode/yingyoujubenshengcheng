@@ -488,7 +488,7 @@ def _generate_comprehensive_summary(overall_score, reports, target_word_count):
     for dim_key, label in labels.items():
         r = reports.get(dim_key, {})
         score = r.get("score", "-")
-        status = "✓" if r.get("pass", False) else "✗"
+        status = "[通过]" if r.get("pass", False) else "[未通过]"
         dim_lines.append(f"  [{status}] {label}: {score}分")
 
     word_info = ""

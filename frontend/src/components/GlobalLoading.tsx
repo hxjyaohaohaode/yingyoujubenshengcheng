@@ -255,7 +255,7 @@ export function getEmptyMessage(page: string): string {
     foreshadows: '尚未设计伏笔体系，伏笔是互动影游的核心驱动力',
     chapters: '尚未规划章节大纲，请先构建叙事结构',
     scenes: '请先创建章节和场景，再开始场景创作',
-    review: '所有场景审核完成 🎉',
+    review: '所有场景审核完成',
     'emotion-curve': '暂无情感曲线数据，完成场景创作后将自动生成',
     export: '暂无可导出内容，请先完成场景创作',
     settings: '项目设置将在此处显示',

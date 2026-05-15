@@ -48,7 +48,7 @@ function EventNode({ data, selected }: NodeProps) {
       <Handle type="source" position={Position.Bottom} className="!w-3 !h-3 !border-2 !bg-white" style={{ borderColor: color }} />
 
       <div className="flex items-center gap-2 mb-1">
-        <span className="text-lg">⚡</span>
+        <span className="text-lg">[事件]</span>
         <span className="text-sm font-bold truncate" style={{ color }}>{nodeData.label}</span>
       </div>
 

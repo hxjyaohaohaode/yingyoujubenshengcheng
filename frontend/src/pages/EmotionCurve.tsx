@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import {
   Card, Button, Tag, Slider, Empty, App, Space, Collapse, Row, Col, Spin,
 } from 'antd'
@@ -121,6 +121,8 @@ export default function EmotionCurve() {
 
   const [wowSuggestions, setWowSuggestions] = useState<string[]>([])
 
+  const mountedRef = useRef(true)
+
   const fetchEmotionData = useCallback(async () => {
     if (!currentProject?.id) return
     setLoading(true)
@@ -130,6 +132,8 @@ export default function EmotionCurve() {
         api.get<any[]>(`/projects/${currentProject.id}/chapters`),
         api.get<any[]>(`/projects/${currentProject.id}/scenes`),
       ])
+
+      if (!mountedRef.current) return
 
       const chapterMap = new Map<string, any>(chaptersData.map((ch: any) => [ch.id, ch]))
       const scenesByChapter = new Map<string, any[]>()
@@ -180,7 +184,8 @@ export default function EmotionCurve() {
       } else {
         setChapters(chapterEmotions)
       }
-    } catch {
+    } catch (e: any) {
+      if (!mountedRef.current) return
       setFetchError('无法连接到服务器，请检查后端服务是否正常运行')
       notification.error({ message: '数据加载失败', description: '请检查网络连接和后端服务状态', placement: 'topRight' })
     } finally {
@@ -189,7 +194,9 @@ export default function EmotionCurve() {
   }, [currentProject?.id])
 
   useEffect(() => {
+    mountedRef.current = true
     fetchEmotionData()
+    return () => { mountedRef.current = false }
   }, [fetchEmotionData])
 
   useEffect(() => {
@@ -380,13 +387,13 @@ export default function EmotionCurve() {
     <div style={{ fontFamily: 'var(--font-family)', display: 'flex', flexDirection: 'column', flex: 1, overflow: 'auto' }}>
       {fetchError && (
         <div style={{ background: '#fff3cd', border: '1px solid #ffc107', borderRadius: 8, padding: '8px 14px', marginBottom: 8, fontSize: 13, color: '#856404', flexShrink: 0 }}>
-          ⚠ {fetchError}
+          {fetchError}
           <Button type="link" size="small" onClick={fetchEmotionData} style={{ marginLeft: 8, padding: 0 }}>重试</Button>
         </div>
       )}
       {!fetchError && hasUndesignedChapters && (
         <div style={{ background: '#e0f2fe', border: '1px solid #0ea5e9', borderRadius: 8, padding: '10px 14px', marginBottom: 8, fontSize: 13, color: '#0369a1', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span>💡 {chapters.length}个章节已创建，但尚未设计情感曲线。所有章节目标值均为默认值，图表可能显示为底部的平直线。</span>
+          <span>[提示] {chapters.length}个章节已创建，但尚未设计情感曲线。所有章节目标值均为默认值，图表可能显示为底部的平直线。</span>
           <Button type="primary" size="small" icon={<RobotOutlined />} loading={isGenerating} onClick={handleAIDesign}>一键设计情感曲线</Button>
         </div>
       )}
@@ -403,13 +410,12 @@ export default function EmotionCurve() {
         </Space>
       </div>
 
-      <div style={{ display: 'flex', gap: 8, flex: 1, minHeight: 0, overflow: 'hidden' }}>
-        {/* 左侧：曲线大图 */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0, overflow: 'hidden' }}>
-          <Card size="small" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 280 }}
+      <div style={{ display: 'flex', gap: 12, flex: 1, minHeight: 0, overflow: 'hidden' }}>
+        <div style={{ flex: 3, display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0, overflow: 'hidden' }}>
+          <Card size="small" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 320 }}
             styles={{ body: { flex: 1, overflow: 'hidden', padding: 12 } }}>
             <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={chartData} margin={{ top: 20, right: 30, left: 10, bottom: 10 }}
+              <ComposedChart data={chartData} margin={{ top: 24, right: 40, left: 10, bottom: 20 }}
                 onClick={handleDotClick}>
                 <defs>
                   <linearGradient id="emotionGradient" x1="0" y1="0" x2="0" y2="1">
@@ -431,22 +437,39 @@ export default function EmotionCurve() {
                   content={({ active, payload }) => {
                     if (!active || !payload?.length) return null
                     const d = payload[0].payload
+                    const ch = chapters.find(c => c.chapter_number === d.chapter_number)
+                    const sceneCount = ch?.scenes?.length || 0
+                    const emotionRange = ch ? (ch.peak_emotion - ch.valley_emotion) : 0
+                    const emotionTrend = ch && d.chapter_number > 1
+                      ? (() => {
+                          const prevCh = chapters.find(c => c.chapter_number === d.chapter_number - 1)
+                          if (!prevCh) return null
+                          const diff = ch.avg_emotion - prevCh.avg_emotion
+                          return diff > 0 ? `↑ 上升${diff.toFixed(1)}` : diff < 0 ? `↓ 下降${Math.abs(diff).toFixed(1)}` : '→ 持平'
+                        })()
+                      : null
                     return (
-                      <div className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg p-2 shadow-lg text-xs">
-                        <div className="font-semibold mb-1">{d.label} · {d.title}</div>
-                        <div className="space-y-0.5">
-                          <div className="flex items-center gap-1"><span className="text-purple-500">●</span>均值: {d.avg_emotion}</div>
-                          <div className="flex items-center gap-1"><span className="text-red-400">●</span>峰值: {d.peak_emotion}</div>
-                          <div className="flex items-center gap-1"><span className="text-blue-400">●</span>低谷: {d.valley_emotion}</div>
+                      <div className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg p-3 shadow-lg text-xs" style={{ minWidth: 200 }}>
+                        <div className="font-semibold mb-2 text-sm">{d.label} · {d.title}</div>
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between gap-4"><span className="flex items-center gap-1"><span className="text-purple-500">●</span>均值</span><span className="font-bold">{d.avg_emotion}</span></div>
+                          <div className="flex items-center justify-between gap-4"><span className="flex items-center gap-1"><span className="text-red-400">●</span>峰值</span><span className="font-bold">{d.peak_emotion}</span></div>
+                          <div className="flex items-center justify-between gap-4"><span className="flex items-center gap-1"><span className="text-blue-400">●</span>低谷</span><span className="font-bold">{d.valley_emotion}</span></div>
                           {d.emotion_target > 0 && (
-                            <div className="flex items-center gap-1"><span className="text-emerald-500">◆</span>AI目标: {d.emotion_target}</div>
+                            <div className="flex items-center justify-between gap-4"><span className="flex items-center gap-1"><span className="text-emerald-500">◆</span>AI目标</span><span className="font-bold">{d.emotion_target}</span></div>
                           )}
-                          {!d.has_scenes && <div className="text-gray-400 italic">暂未创建场景，显示AI目标值</div>}
+                          <div className="border-t border-gray-100 dark:border-slate-700 my-1" />
+                          <div className="flex items-center justify-between gap-4"><span>场景数</span><span className="font-bold">{sceneCount}</span></div>
+                          <div className="flex items-center justify-between gap-4"><span>情感跨度</span><span className="font-bold">{emotionRange.toFixed(1)}</span></div>
+                          {emotionTrend && (
+                            <div className="flex items-center justify-between gap-4"><span>趋势</span><span className={`font-bold ${emotionTrend.startsWith('↑') ? 'text-green-500' : emotionTrend.startsWith('↓') ? 'text-red-500' : 'text-gray-400'}`}>{emotionTrend}</span></div>
+                          )}
+                          {!d.has_scenes && <div className="text-gray-400 italic mt-1">暂未创建场景，显示AI目标值</div>}
                           {d.has_scenes && Math.abs(d.avg_emotion - d.emotion_target) > 1.5 && d.emotion_target > 0 && (
-                            <div className="text-amber-500 text-[10px]">⚠ 实际均值与AI目标偏差 {Math.abs(d.avg_emotion - d.emotion_target).toFixed(1)}</div>
+                            <div className="text-amber-500 text-[10px] mt-1">实际均值与AI目标偏差 {Math.abs(d.avg_emotion - d.emotion_target).toFixed(1)}</div>
                           )}
-                          {d.has_wow && <div className="text-amber-500">⭐ 哇塞时刻</div>}
-                          {d.has_warning && <div className="text-orange-500">⚠ 节奏警告</div>}
+                          {d.has_wow && <div className="text-amber-500 mt-1">哇塞时刻</div>}
+                          {d.has_warning && <div className="text-orange-500 mt-1">节奏警告</div>}
                         </div>
                       </div>
                     )
@@ -454,8 +477,8 @@ export default function EmotionCurve() {
                 />
                 <Area type="monotone" dataKey="avg_emotion" stroke="none" fill="url(#emotionGradient)" />
                 <Line type="monotone" dataKey="avg_emotion" stroke="#8b5cf6" strokeWidth={2.5}
-                  dot={{ r: 4, fill: '#8b5cf6', stroke: '#fff', strokeWidth: 2, cursor: 'pointer' }}
-                  activeDot={{ r: 7, fill: '#8b5cf6', stroke: '#fff', strokeWidth: 3 }} />
+                  dot={{ r: 5, fill: '#8b5cf6', stroke: '#fff', strokeWidth: 2, cursor: 'pointer' }}
+                  activeDot={{ r: 8, fill: '#8b5cf6', stroke: '#fff', strokeWidth: 3 }} />
                 <Line type="monotone" dataKey="peak_emotion" stroke="#ef4444" strokeWidth={1.5} strokeDasharray="5 5"
                   dot={false} />
                 <Line type="monotone" dataKey="valley_emotion" stroke="#3b82f6" strokeWidth={1.5} strokeDasharray="3 3"
@@ -464,34 +487,62 @@ export default function EmotionCurve() {
                   dot={{ r: 3, fill: '#10b981', stroke: '#fff', strokeWidth: 1.5 }}
                   connectNulls={true} />
                 {chartData.filter(d => d.has_wow).map((d, i) => (
-                  <ReferenceDot key={`wow-${i}`} x={d.label} y={d.avg_emotion + 0.8} r={12}
+                  <ReferenceDot key={`wow-${i}`} x={d.label} y={d.avg_emotion + 0.8} r={14}
                     fill="#fbbf24" fillOpacity={0.25} stroke="#f59e0b" strokeWidth={1}
-                    label={{ value: '★', position: 'center', fill: '#d97706', fontSize: 14, fontWeight: 'bold' }} />
+                    label={{ value: 'Wow', position: 'center', fill: '#d97706', fontSize: 14, fontWeight: 'bold' }} />
                 ))}
                 {chartData.filter(d => rhythmWarningSet.has(d.chapter_number)).map((d, i) => (
                   <ReferenceDot key={`warn-${i}`} x={d.label} y={d.avg_emotion - 0.8}
-                    r={6} fill="#f97316" stroke="#fff" strokeWidth={2} />
+                    r={7} fill="#f97316" stroke="#fff" strokeWidth={2} />
                 ))}
               </ComposedChart>
             </ResponsiveContainer>
           </Card>
 
-          {/* 图例 */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 16, fontSize: 12, color: '#6b7280', padding: '0 8px', flexShrink: 0 }}>
             <span className="flex items-center gap-1"><span className="inline-block w-3 h-0.5 bg-purple-500 rounded" />均值曲线</span>
             <span className="flex items-center gap-1"><span className="inline-block w-3 h-0.5 bg-red-400 rounded" style={{ borderStyle: 'dashed' }} />峰值线</span>
             <span className="flex items-center gap-1"><span className="inline-block w-3 h-0.5 bg-blue-400 rounded" style={{ borderStyle: 'dotted' }} />低谷线</span>
             <span className="flex items-center gap-1"><span className="inline-block w-3 h-0.5 bg-emerald-500 rounded" style={{ borderStyle: 'dashed' }} />AI设计目标</span>
-            <span className="flex items-center gap-1"><span className="text-amber-500">★</span>哇塞时刻</span>
+            <span className="flex items-center gap-1"><span className="text-amber-500 font-bold">Wow</span>哇塞时刻</span>
             <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-full bg-orange-500" />节奏警告</span>
           </div>
+
+          {chapters.length > 0 && (
+            <Card size="small" title={<span className="text-sm font-semibold">[概览] 章节情感概览</span>}
+              styles={{ body: { maxHeight: 180, overflow: 'auto' } }}>
+              <div className="space-y-1.5">
+                {chapters.map(ch => {
+                  const isSelected = selectedChapter?.chapter_number === ch.chapter_number
+                  const emotionRange = ch.peak_emotion - ch.valley_emotion
+                  const prevCh = chapters.find(c => c.chapter_number === ch.chapter_number - 1)
+                  const trend = prevCh ? ch.avg_emotion - prevCh.avg_emotion : 0
+                  return (
+                    <div key={ch.chapter_number}
+                      onClick={() => setSelectedChapter(ch)}
+                      className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-all text-xs ${isSelected ? 'bg-purple-50 dark:bg-purple-900/10 border border-purple-200 dark:border-purple-800' : 'hover:bg-gray-50 dark:hover:bg-slate-800'}`}>
+                      <span className="font-mono text-gray-400 w-12 shrink-0">Ch{ch.chapter_number}</span>
+                      <span className="flex-1 truncate font-medium">{ch.title}</span>
+                      <span className="text-purple-600 font-bold w-8 text-right">{ch.avg_emotion}</span>
+                      <span className="text-gray-400 w-10 text-right">±{emotionRange.toFixed(1)}</span>
+                      <span className={`w-8 text-right font-bold ${trend > 0.5 ? 'text-green-500' : trend < -0.5 ? 'text-red-500' : 'text-gray-400'}`}>
+                        {trend > 0.5 ? '↑' : trend < -0.5 ? '↓' : '→'}
+                      </span>
+                      {ch.wow_count > 0 && <span className="text-amber-500 font-bold">Wow{ch.wow_count}</span>}
+                      {ch.scenes.length > 0 && <span className="text-gray-400">{ch.scenes.length}场</span>}
+                    </div>
+                  )
+                })}
+              </div>
+            </Card>
+          )}
         </div>
 
-        {/* 右侧：章节详情面板 */}
-        <div style={{ width: 320, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 8, overflow: 'auto' }}>
+        <div style={{ width: 360, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 8, overflow: 'auto' }}>
           {selectedChapter ? (
             <Card size="small" title={<span className="text-sm">{`第${selectedChapter.chapter_number}章 · ${selectedChapter.title}`}</span>}
-              extra={<Button size="small" type="text" onClick={() => setSelectedChapter(null)}>关闭</Button>}>
+              extra={<Button size="small" type="text" onClick={() => setSelectedChapter(null)}>关闭</Button>}
+              styles={{ body: { maxHeight: 'calc(100vh - 260px)', overflow: 'auto' } }}>
               <div className="space-y-3">
                 <div>
                   <div className="text-xs text-gray-400 mb-1">章节统计</div>
@@ -514,6 +565,39 @@ export default function EmotionCurve() {
                     </div></Col>
                   </Row>
                 </div>
+
+                {(() => {
+                  const prevCh = chapters.find(c => c.chapter_number === selectedChapter.chapter_number - 1)
+                  const nextCh = chapters.find(c => c.chapter_number === selectedChapter.chapter_number + 1)
+                  if (!prevCh && !nextCh) return null
+                  return (
+                    <div>
+                      <div className="text-xs text-gray-400 mb-1 font-semibold">趋势分析</div>
+                      <div className="bg-gray-50 dark:bg-slate-800 rounded-lg p-2 space-y-1">
+                        {prevCh && (
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-gray-400">vs 上一章</span>
+                            <span className={`font-bold ${(selectedChapter.avg_emotion - prevCh.avg_emotion) > 0 ? 'text-green-500' : (selectedChapter.avg_emotion - prevCh.avg_emotion) < 0 ? 'text-red-500' : 'text-gray-400'}`}>
+                              {(selectedChapter.avg_emotion - prevCh.avg_emotion) > 0 ? '+' : ''}{(selectedChapter.avg_emotion - prevCh.avg_emotion).toFixed(1)}
+                            </span>
+                          </div>
+                        )}
+                        {nextCh && (
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-gray-400">vs 下一章</span>
+                            <span className={`font-bold ${(nextCh.avg_emotion - selectedChapter.avg_emotion) > 0 ? 'text-green-500' : (nextCh.avg_emotion - selectedChapter.avg_emotion) < 0 ? 'text-red-500' : 'text-gray-400'}`}>
+                              {(nextCh.avg_emotion - selectedChapter.avg_emotion) > 0 ? '+' : ''}{(nextCh.avg_emotion - selectedChapter.avg_emotion).toFixed(1)}
+                            </span>
+                          </div>
+                        )}
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-gray-400">情感跨度</span>
+                          <span className="font-bold text-purple-500">{(selectedChapter.peak_emotion - selectedChapter.valley_emotion).toFixed(1)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })()}
 
                 <div>
                   <div className="text-xs text-gray-400 mb-1 font-semibold">场景情感强度</div>
@@ -540,7 +624,7 @@ export default function EmotionCurve() {
 
                 {selectedChapter.rhythm_warnings.length > 0 && (
                   <div>
-                    <div className="text-xs text-gray-400 mb-1 font-semibold">⚠ 节奏警告</div>
+                    <div className="text-xs text-gray-400 mb-1 font-semibold">节奏警告</div>
                     <div className="space-y-1">
                       {selectedChapter.rhythm_warnings.map((w, i) => (
                         <div key={i} className="text-xs text-orange-600 bg-orange-50 dark:bg-orange-900/10 p-1.5 rounded">{w}</div>
@@ -551,7 +635,7 @@ export default function EmotionCurve() {
 
                 {selectedChapter.wow_count > 0 && (
                   <div>
-                    <div className="text-xs text-gray-400 mb-1 font-semibold">⭐ 哇塞时刻</div>
+                    <div className="text-xs text-gray-400 mb-1 font-semibold">哇塞时刻</div>
                     {selectedChapter.scenes.filter(s => s.is_wow).map(s => (
                       <div key={s.scene_id} className="text-xs text-amber-600 bg-amber-50 dark:bg-amber-900/10 p-1.5 rounded">
                         {s.scene_code} {s.title}: 情感巅峰 {s.emotion_level}/10
@@ -568,13 +652,13 @@ export default function EmotionCurve() {
                         <span className="font-semibold">{v.type}</span>: {v.detail}
                       </div>
                     ))
-                    : <div className="text-xs text-green-600 bg-green-50 dark:bg-green-900/10 p-1.5 rounded">✅ 节奏正常，无违规</div>
+                    : <div className="text-xs text-green-600 bg-green-50 dark:bg-green-900/10 p-1.5 rounded">节奏正常，无违规</div>
                   }
                 </div>
 
                 {llmRhythmAnalysis && llmRhythmAnalysis.violations.filter(v => v.chapter === selectedChapter.chapter_number).length > 0 && (
                   <div>
-                    <div className="text-xs text-gray-400 mb-1 font-semibold">🤖 AI节奏分析</div>
+                    <div className="text-xs text-gray-400 mb-1 font-semibold">AI节奏分析</div>
                     {llmRhythmAnalysis.violations.filter(v => v.chapter === selectedChapter.chapter_number).map((v, i) => (
                       <div key={i} className="text-xs p-1.5 rounded mb-1 bg-indigo-50 dark:bg-indigo-900/10 text-indigo-600">
                         <span className="font-semibold">{v.type}</span>: {v.detail}

@@ -78,11 +78,49 @@ async def _generate_scene_async(project_id: str, scene_id: str, requirements: di
     from core.storage.service import StorageService
     from core.agent.base import AgentTask
     from core.agent.registry import get_agent
+    from core.context.intent_analyzer import IntentAnalyzer
+    from core.context.context_manager import ContextManager
+    from core.search.web_search import WebSearchService
 
     async with get_db_async() as db:
         gateway = ModelGateway()
         rag = RAGRetriever(db)
         storage = StorageService(db)
+        search_svc = WebSearchService(db, gateway)
+        ctx_mgr = ContextManager(db, gateway, rag, search_svc)
+
+        intent = None
+        search_cards = None
+        upload_chunks = None
+        knowledge_text = ""
+
+        try:
+            project_brief = requirements.get("project_brief", "") or ""
+            genre = requirements.get("genre", "") or ""
+            core_contradiction = requirements.get("core_contradiction", "") or ""
+            user_intent_text = f"{project_brief} {genre} {core_contradiction}".strip()
+
+            if user_intent_text:
+                analyzer = IntentAnalyzer(gateway)
+                intent = await analyzer.analyze(user_intent_text)
+
+                if intent and intent.need_search and intent.entities:
+                    search_cards = await search_svc.batch_search(
+                        intent.entities, user_intent_text
+                    )
+
+            upload_chunks = await ctx_mgr.get_upload_chunks(project_id)
+
+            knowledge_text = await ctx_mgr.enrich_prompt(
+                agent_name="scene_writer",
+                base_prompt="",
+                project_id=project_id,
+                intent=intent,
+                search_cards=search_cards,
+                upload_chunks=upload_chunks,
+            )
+        except Exception as e:
+            logger.warning("知识上下文构建失败(非致命): %s", str(e)[:200])
 
         try:
             agent = get_agent("creator", gateway, rag, storage)
@@ -95,6 +133,7 @@ async def _generate_scene_async(project_id: str, scene_id: str, requirements: di
                 payload={
                     **requirements,
                     "scene_id": scene_id,
+                    "_knowledge_context": knowledge_text,
                 },
                 cost_profile=_get_cost_profile(requirements),
             )
@@ -102,6 +141,7 @@ async def _generate_scene_async(project_id: str, scene_id: str, requirements: di
             result = await agent.execute(task)
         finally:
             await gateway.close()
+            await search_svc.close()
 
         if result.status != "completed":
             issues = "; ".join(result.issues) if result.issues else ""

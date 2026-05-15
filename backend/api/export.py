@@ -731,7 +731,7 @@ async def _export_markdown_streaming(project, runtime, chapters, sections, choic
                 ])
 
                 if s.is_wow_moment:
-                    lines.extend([f"[WOW_MOMENT] ★ 哇塞时刻", ""])
+                    lines.extend([f"[WOW_MOMENT] Wow 哇塞时刻", ""])
                     if s.wow_type:
                         lines.extend([f"  创意类型: {s.wow_type}"])
                     if s.wow_spec:

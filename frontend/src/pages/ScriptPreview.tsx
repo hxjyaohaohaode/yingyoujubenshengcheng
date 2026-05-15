@@ -10,7 +10,7 @@ import {
   PauseCircleOutlined, LockOutlined, StarFilled,
   RightOutlined, CheckCircleFilled, BranchesOutlined,
   FilterOutlined, EyeOutlined, InfoCircleOutlined,
-  StepForwardOutlined,
+  StepForwardOutlined, MenuFoldOutlined, MenuUnfoldOutlined,
 } from '@ant-design/icons'
 import { useProjectStore } from '../stores/projectStore'
 import { chaptersApi, scenesApi, foreshadowsApi, charactersApi, type Scene, type Chapter, type Foreshadow, type Character } from '../api/client'
@@ -94,9 +94,9 @@ const MORAL_LABELS: Record<string, string> = {
 }
 
 const FS_OP_CONFIG: Record<string, { icon: string; label: string; color: string }> = {
-  plant: { icon: '🌱', label: '埋设', color: '#10b981' },
-  reinforce: { icon: '🔄', label: '强化', color: '#3b82f6' },
-  reveal: { icon: '💡', label: '回收', color: '#f59e0b' },
+  plant: { icon: '埋设', label: '埋设', color: '#10b981' },
+  reinforce: { icon: '强化', label: '强化', color: '#3b82f6' },
+  reveal: { icon: '[提示]', label: '回收', color: '#f59e0b' },
 }
 
 function safeDialogue(raw: unknown): DialogueLine[] {
@@ -163,10 +163,13 @@ export default function ScriptPreview() {
   const [expandedChoice, setExpandedChoice] = useState<string | null>(null)
   const [expandedForeshadow, setExpandedForeshadow] = useState<string | null>(null)
   const [expandedWow, setExpandedWow] = useState<string | null>(null)
+  const [filterVisible, setFilterVisible] = useState(true)
 
   const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const mountedRef = useRef(true)
 
   useEffect(() => {
+    mountedRef.current = true
     if (!projectId) return
     setLoading(true)
     Promise.all([
@@ -176,6 +179,7 @@ export default function ScriptPreview() {
       charactersApi.list(projectId),
     ])
       .then(([chData, scData, fsData, charData]) => {
+        if (!mountedRef.current) return
         setChapters(chData)
         setScenes(scData)
         setForeshadows(fsData)
@@ -184,10 +188,12 @@ export default function ScriptPreview() {
           setSelectedChapterId(chData[0].id)
         }
       })
-      .catch(() => {
+      .catch((e: any) => {
+        if (!mountedRef.current) return
         notification.error({ message: '加载数据失败', placement: 'topRight' })
       })
-      .finally(() => setLoading(false))
+      .finally(() => { if (mountedRef.current) setLoading(false) })
+    return () => { mountedRef.current = false }
   }, [projectId])
 
   const characterOptions = useMemo(() => {
@@ -375,7 +381,7 @@ export default function ScriptPreview() {
               </div>
               {subtext && (
                 <div className="ml-6 mt-0.5 text-xs text-gray-400 dark:text-gray-500 italic">
-                  💭 {subtext}
+                  潜台词 {subtext}
                 </div>
               )}
             </div>
@@ -603,7 +609,7 @@ export default function ScriptPreview() {
           onClick={() => setExpandedWow(isExpanded ? null : scene.id)}
         >
           <StarFilled className="text-white text-sm" />
-          <span className="text-white font-bold text-sm">★ 哇塞时刻</span>
+          <span className="text-white font-bold text-sm">Wow 哇塞时刻</span>
           {scene.wow_type && (
             <span className="text-white/80 text-xs ml-1">({scene.wow_type})</span>
           )}
@@ -636,7 +642,7 @@ export default function ScriptPreview() {
                     )}
                     {plan.retrospective_clue && (
                       <div className="mt-1.5 text-[10px] text-amber-600 dark:text-amber-400">
-                        🔍 回望线索: {plan.retrospective_clue}
+                        线索 回望线索: {plan.retrospective_clue}
                       </div>
                     )}
                   </div>
@@ -775,24 +781,16 @@ export default function ScriptPreview() {
 
   return (
     <div style={{ fontFamily: 'var(--font-family)', display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-      <Breadcrumb
-        className="mb-4 text-xs"
-        items={[
-          { title: <><HomeOutlined className="mr-1" />项目</> },
-          { title: <><BookOutlined className="mr-1" />{currentProject?.name || '互动影游预览'}</> },
-          { title: '互动影游预览' },
-        ]}
-      />
-
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
-        <div>
-          <h2 className="section-title" style={{ fontSize: 24 }}>互动影游预览</h2>
-          <p className="text-muted" style={{ margin: '4px 0 0' }}>
-            {scenes.length} 个场景 · {totalWords.toLocaleString()} 字
-            {playState.isPlaying && <Tag color="processing" className="ml-2 text-xs">模拟游玩中</Tag>}
-          </p>
-        </div>
-        <Space wrap>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6, flexShrink: 0 }}>
+        <Breadcrumb
+          className="text-xs"
+          items={[
+            { title: <><HomeOutlined className="mr-1" />项目</> },
+            { title: <><BookOutlined className="mr-1" />{currentProject?.name || '互动影游预览'}</> },
+            { title: '互动影游预览' },
+          ]}
+        />
+        <Space wrap size={4}>
           <Segmented
             size="small"
             value={fontSize}
@@ -846,63 +844,102 @@ export default function ScriptPreview() {
         </Space>
       </div>
 
-      <div className="flex items-center gap-3 mb-4 flex-wrap">
-        <Select
-          value={selectedChapterId}
-          onChange={v => setSelectedChapterId(v)}
-          placeholder="选择章节"
-          style={{ width: 220 }}
-          options={[
-            { value: '', label: '全部章节' },
-            ...chapters.map(c => ({
-              value: c.id,
-              label: `第${c.chapter_number}章 · ${c.title || '未命名'}`,
-            })),
-          ]}
-        />
-        <Select
-          mode="multiple"
-          value={filterCharacters}
-          onChange={v => setFilterCharacters(v)}
-          placeholder="筛选角色"
-          style={{ minWidth: 180, maxWidth: 300 }}
-          options={characterOptions}
-          allowClear
-          maxTagCount={2}
-          maxTagPlaceholder={(omitted) => `+${omitted.length}`}
-        />
-        <Select
-          mode="multiple"
-          value={filterForeshadows}
-          onChange={v => setFilterForeshadows(v)}
-          placeholder="筛选伏笔"
-          style={{ minWidth: 180, maxWidth: 300 }}
-          options={foreshadowOptions}
-          allowClear
-          maxTagCount={2}
-          maxTagPlaceholder={(omitted) => `+${omitted.length}`}
-        />
-        <Input.Search
-          placeholder="搜索场景内容..."
-          value={searchText}
-          onChange={e => setSearchText(e.target.value)}
-          style={{ width: 200 }}
-          allowClear
-        />
-        <Segmented
-          size="small"
-          value={viewType}
-          onChange={(v) => setViewType(v as ViewType)}
-          options={[
-            { label: '章节视图', value: 'chapter' },
-            { label: '沉浸阅读', value: 'continuous' },
-            { label: '场景列表', value: 'scenes' },
-          ]}
-        />
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4, flexShrink: 0 }}>
+        <h2 className="section-title" style={{ fontSize: 18, margin: 0 }}>互动影游预览</h2>
+        <span className="text-muted" style={{ margin: '0 0 0 10px', fontSize: 12 }}>
+          {scenes.length} 个场景 · {totalWords.toLocaleString()} 字
+          {playState.isPlaying && <Tag color="processing" className="ml-2 text-xs">模拟游玩中</Tag>}
+        </span>
       </div>
 
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: filterVisible ? 8 : 2, flexShrink: 0 }}>
+        <Button
+          type="text"
+          size="small"
+          icon={filterVisible ? <MenuFoldOutlined /> : <MenuUnfoldOutlined />}
+          onClick={() => setFilterVisible(!filterVisible)}
+          style={{ color: 'var(--color-muted)', fontSize: 11 }}
+        />
+        <span style={{ fontSize: 11, color: 'var(--color-muted)' }}>
+          {filterVisible ? '收起筛选' : '展开筛选'}
+          {!filterVisible && selectedChapterId && (
+            <Tag style={{ marginLeft: 6, fontSize: 10 }} color="blue">
+              {chapters.find(c => c.id === selectedChapterId)?.title || '已选章节'}
+            </Tag>
+          )}
+          {!filterVisible && filterCharacters.length > 0 && (
+            <Tag style={{ marginLeft: 4, fontSize: 10 }} color="purple">{filterCharacters.length}个角色</Tag>
+          )}
+          {!filterVisible && filterForeshadows.length > 0 && (
+            <Tag style={{ marginLeft: 4, fontSize: 10 }} color="green">{filterForeshadows.length}个伏笔</Tag>
+          )}
+          {!filterVisible && searchText && (
+            <Tag style={{ marginLeft: 4, fontSize: 10 }}>搜索中</Tag>
+          )}
+        </span>
+        <span style={{ fontSize: 11, color: 'var(--color-muted)', marginLeft: 'auto' }}>
+          {viewType === 'chapter' ? '章节视图' : viewType === 'continuous' ? '沉浸阅读' : '场景列表'}
+        </span>
+      </div>
+      {filterVisible && (
+        <div className="flex items-center gap-3 mb-2 flex-wrap" style={{ flexShrink: 0 }}>
+          <Select
+            value={selectedChapterId}
+            onChange={v => setSelectedChapterId(v)}
+            placeholder="选择章节"
+            style={{ width: 220 }}
+            options={[
+              { value: '', label: '全部章节' },
+              ...chapters.map(c => ({
+                value: c.id,
+                label: `第${c.chapter_number}章 · ${c.title || '未命名'}`,
+              })),
+            ]}
+          />
+          <Select
+            mode="multiple"
+            value={filterCharacters}
+            onChange={v => setFilterCharacters(v)}
+            placeholder="筛选角色"
+            style={{ minWidth: 180, maxWidth: 300 }}
+            options={characterOptions}
+            allowClear
+            maxTagCount={2}
+            maxTagPlaceholder={(omitted) => `+${omitted.length}`}
+          />
+          <Select
+            mode="multiple"
+            value={filterForeshadows}
+            onChange={v => setFilterForeshadows(v)}
+            placeholder="筛选伏笔"
+            style={{ minWidth: 180, maxWidth: 300 }}
+            options={foreshadowOptions}
+            allowClear
+            maxTagCount={2}
+            maxTagPlaceholder={(omitted) => `+${omitted.length}`}
+          />
+          <Input.Search
+            placeholder="搜索场景内容..."
+            value={searchText}
+            onChange={e => setSearchText(e.target.value)}
+            style={{ width: 200 }}
+            allowClear
+          />
+          <Segmented
+            size="small"
+            value={viewType}
+            onChange={(v) => setViewType(v as ViewType)}
+            options={[
+              { label: '章节视图', value: 'chapter' },
+              { label: '沉浸阅读', value: 'continuous' },
+              { label: '场景列表', value: 'scenes' },
+            ]}
+          />
+        </div>
+      )}
+
       {selectedChapter && viewType === 'chapter' && (
-        <Card size="small" className="mb-3 bg-blue-50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800">
+        <Card size="small" className="mb-2 bg-blue-50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800" style={{ flexShrink: 0 }}>
           <div className="flex items-center gap-2">
             <BookOutlined className="text-blue-500" />
             <span className="font-semibold">
@@ -917,7 +954,7 @@ export default function ScriptPreview() {
         </Card>
       )}
 
-      <div ref={scrollContainerRef} className="flex-1 overflow-auto border border-gray-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900">
+      <div ref={scrollContainerRef} className="flex-1 overflow-auto border border-gray-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900" style={{ minHeight: 0 }}>
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <Spin><div className="py-12 text-gray-400">加载剧本内容...</div></Spin>
@@ -927,7 +964,7 @@ export default function ScriptPreview() {
             <Empty description="暂无场景内容" />
           </div>
         ) : (
-          <div className="p-6">
+          <div className="p-4">
             {viewType === 'scenes' ? (
               <div className="space-y-6">
                 {filteredScenes.map((scene, idx) => renderSceneCard(scene, idx))}
@@ -935,26 +972,26 @@ export default function ScriptPreview() {
             ) : (
               <div className={viewType === 'continuous' ? getFontClass() : ''}>
                 {viewType === 'continuous' && selectedChapter && (
-                  <div className="mb-6 text-center">
+                  <div className="mb-3 text-center">
                     <Title level={3} className="!mb-1">
                       第{selectedChapter.chapter_number}章 · {selectedChapter.title || '未命名'}
                     </Title>
                     {selectedChapter.summary && (
                       <Text type="secondary" className="text-sm">{selectedChapter.summary}</Text>
                     )}
-                    <Divider />
+                    <Divider style={{ margin: '8px 0' }} />
                   </div>
                 )}
 
                 {filteredScenes.map((scene, idx) => (
-                  <div key={scene.id} className="mb-6">
+                  <div key={scene.id} className="mb-4">
                     {viewType === 'continuous' && (
                       <div className="mb-2 flex items-center gap-2">
                         <Tag color="blue" className="font-mono text-xs">{scene.scene_code}</Tag>
                         {scene.location && <Tag className="text-xs">{scene.location}</Tag>}
                         {scene.is_wow_moment && (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gradient-to-r from-amber-400 to-yellow-300 text-white text-xs font-bold">
-                            <StarFilled /> ★
+                            <StarFilled /> Wow
                           </span>
                         )}
                         {safeForeshadowOps(scene.foreshadow_ops).map((op, i) => {
@@ -987,7 +1024,7 @@ export default function ScriptPreview() {
                     )}
 
                     {viewType === 'continuous' && idx < filteredScenes.length - 1 && (
-                      <div className="text-center text-gray-300 dark:text-gray-600 my-4">* * *</div>
+                      <div className="text-center text-gray-300 dark:text-gray-600 my-2">* * *</div>
                     )}
                   </div>
                 ))}
@@ -997,7 +1034,7 @@ export default function ScriptPreview() {
         )}
       </div>
 
-      <div className="flex items-center justify-between mt-3 text-xs text-gray-400 dark:text-gray-500">
+      <div className="flex items-center justify-between mt-2 text-xs text-gray-400 dark:text-gray-500" style={{ flexShrink: 0 }}>
         <span>共 {filteredScenes.length} 个场景 · {totalWords.toLocaleString()} 字</span>
         <Space>
           <Tag className="text-xs">场景 {scenes.length}</Tag>

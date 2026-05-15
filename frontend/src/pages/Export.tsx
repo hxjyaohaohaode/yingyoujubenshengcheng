@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
   Card, Button, Select, Checkbox, App, Empty, Spin, Space, Tag, Divider,
   Upload, Tabs, Typography,
@@ -26,7 +26,10 @@ export default function Export() {
   const [uploading, setUploading] = useState(false)
   const [optimizing, setOptimizing] = useState(false)
 
+  const mountedRef = useRef(true)
+
   useEffect(() => {
+    mountedRef.current = true
     if (!currentProject?.id) return
     const loadData = async () => {
       setChaptersLoading(true)
@@ -36,18 +39,21 @@ export default function Export() {
           scenesApi.list(currentProject.id),
           charactersApi.list(currentProject.id),
         ])
+        if (!mountedRef.current) return
         setChapters(chData.map((c: any) => ({
           id: c.id, chapter_number: c.chapter_number, title: c.title,
         })))
         const totalWords = scData.reduce((acc: number, s: any) => acc + (s.narration?.length || 0), 0)
         setStats({ scenes: scData.length, words: totalWords, characters: charData.length })
-      } catch {
+      } catch (e: any) {
+        if (!mountedRef.current) return
         notification.error({ message: '数据加载失败', description: '无法加载导出所需数据，请检查网络连接', placement: 'topRight' })
       } finally {
-        setChaptersLoading(false)
+        if (mountedRef.current) setChaptersLoading(false)
       }
     }
     loadData()
+    return () => { mountedRef.current = false }
   }, [currentProject?.id])
 
   const handleExport = async () => {

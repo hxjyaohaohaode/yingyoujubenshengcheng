@@ -58,7 +58,7 @@ function SceneNode({ data, selected }: NodeProps) {
             {nodeData.status}
           </div>
           {nodeData.is_wow_moment && (
-            <div className="text-[9px] animate-pulse">⚡</div>
+            <div className="text-[9px] animate-pulse">[事件]</div>
           )}
         </div>
       </div>
@@ -68,7 +68,7 @@ function SceneNode({ data, selected }: NodeProps) {
           <p className="text-[10px] leading-tight opacity-60 line-clamp-2">{nodeData.narration_preview}</p>
         )}
         {nodeData.location && (
-          <div className="text-[10px] mt-1 opacity-40">📍 {nodeData.location}</div>
+          <div className="text-[10px] mt-1 opacity-40">地点 {nodeData.location}</div>
         )}
       </div>
 

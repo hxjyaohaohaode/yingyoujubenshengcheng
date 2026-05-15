@@ -67,36 +67,36 @@ const MORAL_ALIGNMENT_MAP: Record<string, { label: string; color: string }> = {
 }
 
 const FORESHADOW_TYPE_MAP: Record<string, { icon: string; label: string }> = {
-  plant: { icon: '🌱', label: '埋设' },
-  reinforce: { icon: '🔄', label: '强化' },
-  reveal: { icon: '💡', label: '回收' },
+  plant: { icon: '埋设', label: '埋设' },
+  reinforce: { icon: '强化', label: '强化' },
+  reveal: { icon: '[提示]', label: '回收' },
 }
 
 function getForeshadowTypeIcon(task: unknown): string {
   if (typeof task === 'string') {
     const lower = task.toLowerCase()
-    if (lower.includes('埋设') || lower.includes('plant')) return '🌱'
-    if (lower.includes('强化') || lower.includes('reinforce')) return '🔄'
-    if (lower.includes('回收') || lower.includes('reveal')) return '💡'
-    return '🌱'
+    if (lower.includes('埋设') || lower.includes('plant')) return '埋设'
+    if (lower.includes('强化') || lower.includes('reinforce')) return '强化'
+    if (lower.includes('回收') || lower.includes('reveal')) return '[提示]'
+    return '埋设'
   }
   if (typeof task === 'object' && task !== null) {
     const t = task as Record<string, unknown>
     const type = String(t.type || t.fs_type || '')
-    if (type.includes('plant') || type.includes('埋设')) return '🌱'
-    if (type.includes('reinforce') || type.includes('强化')) return '🔄'
-    if (type.includes('reveal') || type.includes('回收')) return '💡'
+    if (type.includes('plant') || type.includes('埋设')) return '埋设'
+    if (type.includes('reinforce') || type.includes('强化')) return '强化'
+    if (type.includes('reveal') || type.includes('回收')) return '[提示]'
   }
-  return '🌱'
+  return '埋设'
 }
 
 function countForeshadowByType(tasks: unknown[]): { plant: number; reinforce: number; reveal: number } {
   let plant = 0, reinforce = 0, reveal = 0
   for (const task of tasks) {
     const icon = getForeshadowTypeIcon(task)
-    if (icon === '🌱') plant++
-    else if (icon === '🔄') reinforce++
-    else if (icon === '💡') reveal++
+    if (icon === '埋设') plant++
+    else if (icon === '强化') reinforce++
+    else if (icon === '[提示]') reveal++
   }
   return { plant, reinforce, reveal }
 }
@@ -653,13 +653,13 @@ export default function ChapterOutline() {
                         {totalForeshadow > 0 && (
                           <>
                             {foreshadowStats.plant > 0 && (
-                              <Tag style={{ fontSize: 11 }}>🌱埋设 ×{foreshadowStats.plant}</Tag>
+                              <Tag style={{ fontSize: 11 }}>埋设埋设 ×{foreshadowStats.plant}</Tag>
                             )}
                             {foreshadowStats.reinforce > 0 && (
-                              <Tag color="blue" style={{ fontSize: 11 }}>🔄强化 ×{foreshadowStats.reinforce}</Tag>
+                              <Tag color="blue" style={{ fontSize: 11 }}>强化强化 ×{foreshadowStats.reinforce}</Tag>
                             )}
                             {foreshadowStats.reveal > 0 && (
-                              <Tag color="gold" style={{ fontSize: 11 }}>💡回收 ×{foreshadowStats.reveal}</Tag>
+                              <Tag color="gold" style={{ fontSize: 11 }}>[提示]回收 ×{foreshadowStats.reveal}</Tag>
                             )}
                           </>
                         )}

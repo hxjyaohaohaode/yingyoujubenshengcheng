@@ -6,6 +6,20 @@
 
 import json
 
+
+def enrich_prompt_with_knowledge(base_prompt: str, knowledge_context: str = "") -> str:
+    if not knowledge_context:
+        return base_prompt
+
+    return (
+        "========== 参考知识上下文 ==========\n"
+        "【重要指令】以下提供的参考信息必须作为你生成内容的基础依据，"
+        "确保生成的内容与这些参考信息保持高度一致。\n\n"
+        f"{knowledge_context}\n"
+        "========================================\n\n"
+        f"{base_prompt}"
+    )
+
 # ============================================================================
 #  通用写作质量规范（所有创意类提示词共享）
 # ============================================================================
@@ -89,7 +103,7 @@ def build_world_gen_prompt(config_key: str, label: str, desc: str,
 
     is_continuation = bool(current_value and current_value.strip())
 
-    CROSS_REF_CONSTRAINT = f"""【⚠️ 交叉引用约束 — 必须遵守】
+    CROSS_REF_CONSTRAINT = f"""【[警告] 交叉引用约束 — 必须遵守】
 当前正在生成「{label}」配置项。根据世界观内部逻辑，此配置项与以下配置项存在强关联：
 {chr(10).join(f"  ▸ {WORLD_CONFIG_LABELS.get(rk, rk)}（{rk}）" for rk in cross_ref_keys) if cross_ref_keys else "  （无交叉引用要求）"}
 你**必须**在生成内容中显式引用上述关联配置项的核心设定，确保逻辑自洽。具体要求：
@@ -152,7 +166,7 @@ def build_world_gen_prompt(config_key: str, label: str, desc: str,
 
 {INTERACTIVE_ADAPTABILITY}
 
-【⚠️ 续写模式 — 极其重要】
+【[警告] 续写模式 — 极其重要】
 当前配置项「{label}」已经有内容了！你的任务是：
 - 方案1：在现有内容基础上**深化和扩展**——补充更多具体细节、增加洋葱模型的深层设定、添加能直接驱动剧情的元素，保持与现有内容完全一致
 - 方案2：在现有内容基础上**优化和重构**——保留核心设定不变，改善表述、强化戏剧张力、补充缺失的逻辑链条
@@ -166,21 +180,21 @@ def build_world_gen_prompt(config_key: str, label: str, desc: str,
 
         cross_ref_section = ""
         if cross_ref_context:
-            cross_ref_section = f"""🔗 必须参考的关联设定（生成「{label}」时必须显式引用）：
+            cross_ref_section = f"""[关联] 必须参考的关联设定（生成「{label}」时必须显式引用）：
 {cross_ref_context}
 ━━━━━━━━━━━━━━━━━━━━━━"""
 
         user_prompt = f"""请为以下世界观配置项生成3个基于现有内容的扩展/优化方案：
 
 ━━━━━━━━━━━━━━━━━━━━━━
-⚙️ 配置项：{label}
-📝 功能说明：{desc}
+[配置] 配置项：{label}
+[说明] 功能说明：{desc}
 ━━━━━━━━━━━━━━━━━━━━━━
-📝 当前已有内容（必须以此为基础扩展，不能抛弃）：
+[说明] 当前已有内容（必须以此为基础扩展，不能抛弃）：
 {current_value}
 ━━━━━━━━━━━━━━━━━━━━━━
 {cross_ref_section}
-{f"🌍 其他已设定的世界观（请保持一致性）：\n{existing_context}\n━━━━━━━━━━━━━━━━━━━━━━" if existing_context else ""}
+{f"[世界观] 其他已设定的世界观（请保持一致性）：\n{existing_context}\n━━━━━━━━━━━━━━━━━━━━━━" if existing_context else ""}
 
 【创作要求】
 1. 每个方案必须以现有内容为基础，不能凭空创造全新的无关设定
@@ -218,18 +232,18 @@ def build_world_gen_prompt(config_key: str, label: str, desc: str,
 
         cross_ref_section = ""
         if cross_ref_context:
-            cross_ref_section = f"""🔗 必须参考的关联设定（生成「{label}」时必须显式引用）：
+            cross_ref_section = f"""[关联] 必须参考的关联设定（生成「{label}」时必须显式引用）：
 {cross_ref_context}
 ━━━━━━━━━━━━━━━━━━━━━━"""
 
         user_prompt = f"""请为以下世界观配置项生成3个高质量的创新方案：
 
 ━━━━━━━━━━━━━━━━━━━━━━
-⚙️ 配置项：{label}
-📝 功能说明：{desc}
+[配置] 配置项：{label}
+[说明] 功能说明：{desc}
 ━━━━━━━━━━━━━━━━━━━━━━
 {cross_ref_section}
-{f"🌍 已有世界观设定（请保持一致性）：\n{existing_context}\n━━━━━━━━━━━━━━━━━━━━━━" if existing_context else ""}
+{f"[世界观] 已有世界观设定（请保持一致性）：\n{existing_context}\n━━━━━━━━━━━━━━━━━━━━━━" if existing_context else ""}
 
 【创作要求】
 1. 每个方案必须包含可操作的、具体的设定细节（人名、地名、机构名、具体数值）
@@ -304,7 +318,7 @@ def build_character_gen_prompt(world_context: str, genre: str,
             world_binding_lines.append(f"  ▸ 约束条件：{world_constraints}")
         if world_impossible:
             world_binding_lines.append(f"  ▸ 不可能事项：{world_impossible}")
-        world_binding_block = f"""【⚠️ 世界观深度绑定 — 强制约束，必须遵守】
+        world_binding_block = f"""【[警告] 世界观深度绑定 — 强制约束，必须遵守】
 角色的每一个维度都必须与世界观深度关联，不得脱离世界观孤立设计：
 {chr(10).join(world_binding_lines)}
 
@@ -327,7 +341,7 @@ def build_character_gen_prompt(world_context: str, genre: str,
 
 {INTERACTIVE_GAME_WRITING}
 
-【⚠️ 续写模式 — 极其重要】
+【[警告] 续写模式 — 极其重要】
 项目中已经有 {len(existing_chars)} 个角色了！你的任务是生成 **补充角色**，不是重新生成整个阵容！
 
 你必须做到：
@@ -384,10 +398,10 @@ def build_character_gen_prompt(world_context: str, genre: str,
         user_prompt = f"""请在已有角色基础上，生成 {target_count} 个补充角色：
 
 ━━━━━━━━━━━━━━━━━━━━━━
-🎭 题材/体裁：{genre or '未指定'}
+[题材] 题材/体裁：{genre or '未指定'}
 ━━━━━━━━━━━━━━━━━━━━━━
-{f"🌍 世界观背景：\n{world_context}\n━━━━━━━━━━━━━━━━━━━━━━" if world_context else ""}
-👥 已有角色（{len(existing_chars)}个，新角色必须与它们产生关联）：
+{f"[世界观] 世界观背景：\n{world_context}\n━━━━━━━━━━━━━━━━━━━━━━" if world_context else ""}
+[角色] 已有角色（{len(existing_chars)}个，新角色必须与它们产生关联）：
 {existing_context}
 ━━━━━━━━━━━━━━━━━━━━━━
 
@@ -468,9 +482,9 @@ def build_character_gen_prompt(world_context: str, genre: str,
         user_prompt = f"""请为以下项目创建完整的角色阵容：
 
 ━━━━━━━━━━━━━━━━━━━━━━
-🎭 题材/体裁：{genre or '未指定（请自行选择最适合的题材方向）'}
+[题材] 题材/体裁：{genre or '未指定（请自行选择最适合的题材方向）'}
 ━━━━━━━━━━━━━━━━━━━━━━
-{f"🌍 世界观背景：\n{world_context}\n━━━━━━━━━━━━━━━━━━━━━━" if world_context else "🌍 世界观：未设定（请自行为角色设计一个引人入胜的世界背景）\n━━━━━━━━━━━━━━━━━━━━━━"}
+{f"[世界观] 世界观背景：\n{world_context}\n━━━━━━━━━━━━━━━━━━━━━━" if world_context else "[世界观] 世界观：未设定（请自行为角色设计一个引人入胜的世界背景）\n━━━━━━━━━━━━━━━━━━━━━━"}
 
 【创作要求】
 1. 生成{target_count}个角色，形成完整的角色阵容
@@ -530,7 +544,7 @@ def build_relation_network_prompt(world_context: str, genre: str,
             world_binding_lines.append(f"  ▸ 约束条件：{world_constraints}")
         if world_impossible:
             world_binding_lines.append(f"  ▸ 不可能事项：{world_impossible}")
-        world_binding_block = f"""【⚠️ 世界观深度绑定 — 关系网络必须与世界观深度关联】
+        world_binding_block = f"""【[警告] 世界观深度绑定 — 关系网络必须与世界观深度关联】
 {chr(10).join(world_binding_lines)}
 
 1. 关系的成因必须根植于世界观核心矛盾——角色之间的冲突、联盟、操控都应是对核心矛盾不同立场的体现
@@ -602,10 +616,10 @@ def build_relation_network_prompt(world_context: str, genre: str,
     user_prompt = f"""请为以下角色生成完整的关系网络：
 
 ━━━━━━━━━━━━━━━━━━━━━━
-🎭 题材：{genre or '未指定'}
+[题材] 题材：{genre or '未指定'}
 ━━━━━━━━━━━━━━━━━━━━━━
-{f"🌍 世界观：\n{world_context}\n━━━━━━━━━━━━━━━━━━━━━━" if world_context else ""}
-👥 角色列表（{n}个）：
+{f"[世界观] 世界观：\n{world_context}\n━━━━━━━━━━━━━━━━━━━━━━" if world_context else ""}
+[角色] 角色列表（{n}个）：
 {char_context}
 ━━━━━━━━━━━━━━━━━━━━━━
 
@@ -858,7 +872,7 @@ def build_chapter_outline_prompt(project_name: str, genre: str, tone: str,
 
 {INTERACTIVE_GAME_WRITING}
 
-【⚠️ 续写模式 — 极其重要】
+【[警告] 续写模式 — 极其重要】
 项目中已经有 {len(existing_chapters)} 章了！你的任务是**只生成后续章节**，不是重新设计整个大纲！
 
 你必须做到：
@@ -890,31 +904,31 @@ def build_chapter_outline_prompt(project_name: str, genre: str, tone: str,
 
         foreshadow_section = ""
         if foreshadow_context:
-            foreshadow_section = f"""🔮 待处理伏笔（新章节必须安排这些伏笔的埋设/强化/回收）：
+            foreshadow_section = f"""[伏笔] 待处理伏笔（新章节必须安排这些伏笔的埋设/强化/回收）：
 {foreshadow_context}
 ━━━━━━━━━━━━━━━━━━━━━━"""
 
         world_config_section = ""
         if world_config_context:
-            world_config_section = f"""⚙️ 世界观配置项（章节worldview_refs必须引用这些配置项）：
+            world_config_section = f"""[配置] 世界观配置项（章节worldview_refs必须引用这些配置项）：
 {world_config_context}
 ━━━━━━━━━━━━━━━━━━━━━━"""
 
         user_prompt = f"""请在已有章节基础上，生成后续章节大纲：
 
 ━━━━━━━━━━━━━━━━━━━━━━
-📖 项目：{project_name}
-🎭 题材：{genre or '未指定'}
-🎨 基调：{tone or '未指定'}
-📐 已有：{len(existing_chapters)}章 → 目标：{target_chapters}章（需补充约{additional_chapters}章）
-📝 目标总字数：{target_words}字（每章约{words_per_chapter}字）
+[项目] 项目：{project_name}
+[题材] 题材：{genre or '未指定'}
+[基调] 基调：{tone or '未指定'}
+[目标] 已有：{len(existing_chapters)}章 → 目标：{target_chapters}章（需补充约{additional_chapters}章）
+[说明] 目标总字数：{target_words}字（每章约{words_per_chapter}字）
 ━━━━━━━━━━━━━━━━━━━━━━
 {world_context}
 ━━━━━━━━━━━━━━━━━━━━━━
-{f"👥 角色信息：\n{character_context}\n━━━━━━━━━━━━━━━━━━━━━━" if character_context else ""}
+{f"[角色] 角色信息：\n{character_context}\n━━━━━━━━━━━━━━━━━━━━━━" if character_context else ""}
 {world_config_section}
 {foreshadow_section}
-📋 已有章节详情（新章节必须严格承接这些内容）：
+[详情] 已有章节详情（新章节必须严格承接这些内容）：
 {existing_info}
 ━━━━━━━━━━━━━━━━━━━━━━
 
@@ -963,28 +977,28 @@ def build_chapter_outline_prompt(project_name: str, genre: str, tone: str,
 
         foreshadow_section = ""
         if foreshadow_context:
-            foreshadow_section = f"""🔮 待处理伏笔（章节必须安排这些伏笔的埋设/强化/回收）：
+            foreshadow_section = f"""[伏笔] 待处理伏笔（章节必须安排这些伏笔的埋设/强化/回收）：
 {foreshadow_context}
 ━━━━━━━━━━━━━━━━━━━━━━"""
 
         world_config_section = ""
         if world_config_context:
-            world_config_section = f"""⚙️ 世界观配置项（章节worldview_refs必须引用这些配置项）：
+            world_config_section = f"""[配置] 世界观配置项（章节worldview_refs必须引用这些配置项）：
 {world_config_context}
 ━━━━━━━━━━━━━━━━━━━━━━"""
 
         user_prompt = f"""请为以下互动影游项目设计完整的章节大纲：
 
 ━━━━━━━━━━━━━━━━━━━━━━
-📖 项目：{project_name}
-🎭 题材：{genre or '未指定'}
-🎨 基调：{tone or '未指定'}
-📐 目标：{target_chapters}章
-📝 目标总字数：{target_words}字（每章约{words_per_chapter}字）
+[项目] 项目：{project_name}
+[题材] 题材：{genre or '未指定'}
+[基调] 基调：{tone or '未指定'}
+[目标] 目标：{target_chapters}章
+[说明] 目标总字数：{target_words}字（每章约{words_per_chapter}字）
 ━━━━━━━━━━━━━━━━━━━━━━
 {world_context}
 ━━━━━━━━━━━━━━━━━━━━━━
-{f"👥 角色信息：\n{character_context}\n━━━━━━━━━━━━━━━━━━━━━━" if character_context else ""}
+{f"[角色] 角色信息：\n{character_context}\n━━━━━━━━━━━━━━━━━━━━━━" if character_context else ""}
 {world_config_section}
 {foreshadow_section}
 
@@ -1004,6 +1018,32 @@ def build_chapter_outline_prompt(project_name: str, genre: str, tone: str,
 13. 充分利用可用空间，每章核心冲突写得越详细越好
 
 请直接输出JSON，不要输出任何其他内容。"""
+
+    if force_prose_format:
+        fallback_system = f"""你是互动影游场景编剧。由于格式问题，本次使用简化模式。
+
+{CHINESE_WRITING_STANDARDS}
+
+请直接输出纯文本格式的场景内容，包含：
+1. 叙述段落（完整的小说式描写，包含画面感和感官描写）
+2. 对话段落（角色名：台词）
+3. 场景结尾的选择支（选项A/B/C及简述后果）
+
+不要输出JSON，不要输出代码块，直接写正文。"""
+
+        fallback_user = f"""题材/风格：{genre} / {style}
+
+世界观：{world_context[:1500]}
+
+角色：{character_states[:1000]}
+
+前序场景：{previous_scenes[:800]}
+
+本场景：{scene_code} | 类型：{scene_type} | 情感：{emotion_target}/10 | 地点：{location}
+
+请直接写出完整的场景正文（叙述+对话+选择支），至少800字。"""
+
+        return fallback_system, fallback_user
 
     return system_prompt, user_prompt
 
@@ -1086,6 +1126,7 @@ def build_scene_gen_prompt(
     rag_context: str = "",
     genre: str = "",
     style: str = "",
+    force_prose_format: bool = False,
 ) -> tuple[str, str]:
     """
     场景生成提示词（升级版）。
@@ -1160,20 +1201,20 @@ def build_scene_gen_prompt(
 ```
 
 【正确vs错误的例子】
-❌ 错误 narration："场景发生在酒馆，主角和反派对峙。"
-✅ 正确 narration："酒馆的灯笼在穿堂风里摇晃，把两人的影子撕成碎片。主角的手指扣在腰间的剑柄上，指节发白。空气中弥漫着劣质麦酒和汗渍的酸味。'你来了。'他说，声音比想象中稳。"
+[X] 错误 narration："场景发生在酒馆，主角和反派对峙。"
+[V] 正确 narration："酒馆的灯笼在穿堂风里摇晃，把两人的影子撕成碎片。主角的手指扣在腰间的剑柄上，指节发白。空气中弥漫着劣质麦酒和汗渍的酸味。'你来了。'他说，声音比想象中稳。"
 
-❌ 错误 dialogue：{{"char": "角色A", "text": "我对你很失望", "subtext": "我对你很失望"}}
-✅ 正确 dialogue：{{"char": "角色A", "text": "这杯酒我敬你——敬你当年在雪地里给我那块干粮。", "subtext": "我记得你的恩情，但你也欠我一条命", "language_style": "言简意赅，每句不超过15字", "catchphrase_ref": "敬你"}}
+[X] 错误 dialogue：{{"char": "角色A", "text": "我对你很失望", "subtext": "我对你很失望"}}
+[V] 正确 dialogue：{{"char": "角色A", "text": "这杯酒我敬你——敬你当年在雪地里给我那块干粮。", "subtext": "我记得你的恩情，但你也欠我一条命", "language_style": "言简意赅，每句不超过15字", "catchphrase_ref": "敬你"}}
 
-❌ 错误 choices：{{"id": "A", "text": "帮助他", "consequence": "他感谢你"}}
-✅ 正确 choices：{{"id": "A", "text": "将情报交给盟友", "consequence_direct": "盟友立即发动突袭，救出人质但损失惨重", "consequence_indirect": "敌方开始怀疑内部有叛徒，加强审查", "consequence_long_term": "盟友因这次行动获得的关键位置，在最终决战中成为决定性力量", "moral_alignment": "good"}}
+[X] 错误 choices：{{"id": "A", "text": "帮助他", "consequence": "他感谢你"}}
+[V] 正确 choices：{{"id": "A", "text": "将情报交给盟友", "consequence_direct": "盟友立即发动突袭，救出人质但损失惨重", "consequence_indirect": "敌方开始怀疑内部有叛徒，加强审查", "consequence_long_term": "盟友因这次行动获得的关键位置，在最终决战中成为决定性力量", "moral_alignment": "good"}}
 
-❌ 错误 foreshadow_ops：{{"fs_id": "FS001", "op": "plant", "content": "暗示角色B的真实身份"}}
-✅ 正确 foreshadow_ops：{{"fs_id": "FS001", "op": "plant", "content": "暗示角色B的真实身份", "worldview_ref": "history-百年前的流放事件", "text_implementation": "在叙述中描写角色B下意识触摸左耳的旧伤疤——与百年前流放者标记的传说吻合"}}
+[X] 错误 foreshadow_ops：{{"fs_id": "FS001", "op": "plant", "content": "暗示角色B的真实身份"}}
+[V] 正确 foreshadow_ops：{{"fs_id": "FS001", "op": "plant", "content": "暗示角色B的真实身份", "worldview_ref": "history-百年前的流放事件", "text_implementation": "在叙述中描写角色B下意识触摸左耳的旧伤疤——与百年前流放者标记的传说吻合"}}
 
-❌ 错误 causal_chain：{{"preconditions": ["前序事件"], "catalyst": "发生了什么", "direct_result": "结果", "indirect_result": "间接结果", "far_result": "远期结果"}}
-✅ 正确 causal_chain：{{"preconditions": ["角色A在前一场景中获得了密室的钥匙", "世界观设定中百年流放者的后裔隐藏在贵族中"], "catalyst": "角色B在酒馆中下意识触摸左耳旧伤疤，被角色A注意到", "direct_result": "角色A开始怀疑角色B的身份，但选择不动声色", "indirect_result": "角色A开始暗中调查角色B的背景，导致两人关系出现裂痕", "far_result": "角色B的真实身份揭露，引发贵族阶层的权力重组"}}
+[X] 错误 causal_chain：{{"preconditions": ["前序事件"], "catalyst": "发生了什么", "direct_result": "结果", "indirect_result": "间接结果", "far_result": "远期结果"}}
+[V] 正确 causal_chain：{{"preconditions": ["角色A在前一场景中获得了密室的钥匙", "世界观设定中百年流放者的后裔隐藏在贵族中"], "catalyst": "角色B在酒馆中下意识触摸左耳旧伤疤，被角色A注意到", "direct_result": "角色A开始怀疑角色B的身份，但选择不动声色", "indirect_result": "角色A开始暗中调查角色B的背景，导致两人关系出现裂痕", "far_result": "角色B的真实身份揭露，引发贵族阶层的权力重组"}}
 
 【绝对禁止】
 - narration写成"场景概述"、"剧情提要"、"分镜说明"或"设定描述"
@@ -1216,21 +1257,21 @@ def build_scene_gen_prompt(
     user_prompt = f"""请为以下互动影游项目撰写一个完整的场景：
 
 ━━━━━━━━━━━━━━━━━━━━━━
-🎭 题材/风格：{genre} / {style}
+[题材] 题材/风格：{genre} / {style}
 ━━━━━━━━━━━━━━━━━━━━━━
-🌍 世界观设定：
+[世界观] 世界观设定：
 {world_context}
 ━━━━━━━━━━━━━━━━━━━━━━
-👥 角色详细档案：
+[角色] 角色详细档案：
 {character_states}
 ━━━━━━━━━━━━━━━━━━━━━━
-📖 前序场景全文（必须严格保持叙事连续性——角色位置、情感状态、已知信息必须自然衔接）：
+[项目] 前序场景全文（必须严格保持叙事连续性——角色位置、情感状态、已知信息必须自然衔接）：
 {previous_scenes}
 ━━━━━━━━━━━━━━━━━━━━━━
-📚 章节上下文：
+[素材] 章节上下文：
 {chapter_info}
 ━━━━━━━━━━━━━━━━━━━━━━
-🎬 本场景任务：
+[场景] 本场景任务：
 - 场景编号: {scene_code}
 - 场景类型: {scene_type}
 - 情感目标: {emotion_target}/10
@@ -1240,7 +1281,7 @@ def build_scene_gen_prompt(
 ━━━━━━━━━━━━━━━━━━━━━━
 {wow_requirements}
 {word_constraints}
-{f"📚 参考素材：\\n{rag_context}\\n━━━━━━━━━━━━━━━━━━━━━━" if rag_context else ""}
+{f"[素材] 参考素材：\\n{rag_context}\\n━━━━━━━━━━━━━━━━━━━━━━" if rag_context else ""}
 
 请直接输出JSON，不要输出任何其他内容。"""
 
@@ -1256,7 +1297,7 @@ def build_wow_plan_prompt(foreshadow_context: str, character_context: str,
     """
     core_truth_block = ""
     if core_truth and core_truth.strip():
-        core_truth_block = f"""【⚠️ 核心真相绑定 — 强制约束，必须遵守】
+        core_truth_block = f"""【[警告] 核心真相绑定 — 强制约束，必须遵守】
 本项目的核心真相：
 {core_truth}
 
@@ -1266,7 +1307,7 @@ def build_wow_plan_prompt(foreshadow_context: str, character_context: str,
 
     worldview_block = ""
     if worldview_context and worldview_context.strip():
-        worldview_block = f"""【⚠️ 世界观上下文 — 方案必须与世界观自洽】
+        worldview_block = f"""【[警告] 世界观上下文 — 方案必须与世界观自洽】
 {worldview_context}
 
 1. 每个方案的逻辑必须在世界观框架内自洽，不得违反世界观约束条件和不可能事项
@@ -1310,12 +1351,12 @@ def build_wow_plan_prompt(foreshadow_context: str, character_context: str,
     user_prompt = f"""请为以下伏笔设计2-3个震撼级别的"哇塞时刻"回收方案：
 
 ━━━━━━━━━━━━━━━━━━━━━━
-🔮 伏笔详情：
+[伏笔] 伏笔详情：
 {foreshadow_context}
 ━━━━━━━━━━━━━━━━━━━━━━
-{f'👤 相关角色：\n{character_context}\n━━━━━━━━━━━━━━━━━━━━━━' if character_context else ''}
-{f'🔮 核心真相：\n{core_truth}\n━━━━━━━━━━━━━━━━━━━━━━' if core_truth and core_truth.strip() else ''}
-{f'🌍 世界观上下文：\n{worldview_context}\n━━━━━━━━━━━━━━━━━━━━━━' if worldview_context and worldview_context.strip() else ''}
+{f'[角色] 相关角色：\n{character_context}\n━━━━━━━━━━━━━━━━━━━━━━' if character_context else ''}
+{f'[伏笔] 核心真相：\n{core_truth}\n━━━━━━━━━━━━━━━━━━━━━━' if core_truth and core_truth.strip() else ''}
+{f'[世界观] 世界观上下文：\n{worldview_context}\n━━━━━━━━━━━━━━━━━━━━━━' if worldview_context and worldview_context.strip() else ''}
 
 【输出格式 - 严格的JSON】
 在```json```代码块中：
@@ -1384,15 +1425,15 @@ G. 总体完成度（completion）"""
     user_prompt = f"""请对以下互动影游项目进行全局质量审计：
 
 ═══════════════════════════════════════════
-📖 项目概况
+[项目] 项目概况
 ═══════════════════════════════════════════
 {json.dumps(project_info, ensure_ascii=False, indent=2)}
 ═══════════════════════════════════════════
-📊 项目统计
+[统计] 项目统计
 ═══════════════════════════════════════════
 {json.dumps(stats, ensure_ascii=False, indent=2)}
 ═══════════════════════════════════════════
-⚠️ 已知问题
+[警告] 已知问题
 ═══════════════════════════════════════════
 {issues_summary or '无显著问题报告'}
 ═══════════════════════════════════════════
@@ -1478,15 +1519,16 @@ def build_foreshadow_design_prompt(
 - 必须包含 wow_factor：描述回看前文恍然大悟的全新体验
 - 必须与核心真相直接关联
 
-### 第二层：章节级伏笔（Chapter Level，20-30条）
+### 第二层：章节级伏笔（Chapter Level，15-25条）
 - 跨越3-5个章节，在A埋设、B强化、C回收
 - 看似无关紧要的细节，实则为关键线索
 - 必须与世界观设定或角色动机深度关联
 
-### 第三层：场景级伏笔（Scene Level，60-100条）
+### 第三层：场景级伏笔（Scene Level，20-40条）
 - 在单一章节内完成埋设与回收
 - 形式：双关语、环境描写的隐藏线索、角色行为的矛盾细节
 - 为全剧级和章节级伏笔提供强化素材
+- 每条场景级伏笔描述可精简为50-150字，三层含义用简短一句话概括即可
 
 【伏笔关联体系 — 四类关联】
 每条伏笔必须标注与其他伏笔的关联关系：
@@ -1551,32 +1593,33 @@ def build_foreshadow_design_prompt(
 ```
 
 【重要：防止截断】
-- 伏笔总数可能在85-138条之间，请确保完整性
-- 场景级伏笔可以适当精简描述（每条50-150字即可），但必须包含三层含义和关联数据
+- 伏笔总数预计在40-70条之间，请确保完整性
+- 场景级伏笔每条50-150字即可，三层含义用简短一句话概括
 - 优先保证全剧级和章节级伏笔的完整性和深度
-- 如果篇幅有限，场景级伏笔数量可以适当减少，但全剧级和章节级必须达标"""
+- 如果篇幅有限，场景级伏笔数量可以适当减少，但全剧级和章节级必须达标
+- **JSON必须正确闭合**：宁可少写几条伏笔，也不能让JSON结构断裂"""
 
     user_prompt = f"""请为以下互动影游项目设计完整的三层伏笔体系：
 
 ━━━━━━━━━━━━━━━━━━━━━━
-🔮 核心真相：{core_truth or '未设定'}
-⚡ 核心矛盾：{core_contradiction or '未设定'}
-📐 总章节数：{chapter_count}
+[伏笔] 核心真相：{core_truth or '未设定'}
+[矛盾] 核心矛盾：{core_contradiction or '未设定'}
+[目标] 总章节数：{chapter_count}
 ━━━━━━━━━━━━━━━━━━━━━━
-🌍 世界观设定：
+[世界观] 世界观设定：
 {world_context}
 ━━━━━━━━━━━━━━━━━━━━━━
-👥 角色列表：
+[角色] 角色列表：
 {character_context}
 ━━━━━━━━━━━━━━━━━━━━━━
-📖 章节大纲：
+[项目] 章节大纲：
 {chapter_context}
 ━━━━━━━━━━━━━━━━━━━━━━
 
 【创作要求 — 硬性指标】
 1. **全剧级伏笔5-8条**：每条必须与核心真相直接关联，必须有3-5个reinforce_locations
-2. **章节级伏笔20-30条**：每条必须与世界观设定或角色动机深度关联
-3. **场景级伏笔60-100条**：每条必须包含三层含义，可以适当精简描述
+2. **章节级伏笔15-25条**：每条必须与世界观设定或角色动机深度关联
+3. **场景级伏笔20-40条**：每条必须包含三层含义，描述可精简（50-150字/条）
 4. **回收率≥80%**：核心伏笔（全剧级+章节级）必须有完整的plant→reinforce→reveal路径
 5. **四类关联**：伏笔之间必须建立DEPENDS_ON/SUPPORTS/ENABLES/CONFLICTS_WITH关联
 6. **世界观绑定**：每条伏笔必须标注worldview_refs

@@ -1,5 +1,5 @@
 name: interactive_drama
-description: "互动影游，完整剧本生成（世界观→角色→伏笔→大纲→场景→对白→选择支→终审）。默认模板。"
+description: "互动影游，完整剧本生成（预处理→世界观→角色→伏笔→大纲→场景→对白→选择支→终审）。默认模板。"
 scale_config:
   light:
     max_parallel: 2
@@ -12,6 +12,22 @@ scale_config:
     audit_skills: [llm_audit, creative_score]
 
 phases:
+  - name: 智能预处理
+    human_gate: false
+    steps:
+      - agent: orchestrator
+        skill: intent_analysis
+        input_from: [user_input]
+        output_to: layer0
+        cost_profile: economy
+        timeout: 300
+      - agent: material
+        skill: web_search
+        input_from: [layer0]
+        output_to: layer0
+        cost_profile: economy
+        timeout: 600
+
   - name: 素材准备
     human_gate: false
     steps:
@@ -38,13 +54,13 @@ phases:
         input_from: [layer0]
         output_to: layer0
         cost_profile: quality
-        timeout: 600
+        timeout: 1200
       - agent: foreshadow
         skill: foreshadow_reaction
         input_from: [layer0]
         output_to: layer0
         cost_profile: quality
-        timeout: 600
+        timeout: 900
       - agent: creative
         skill: wow_plan_designer
         input_from: [layer0]
@@ -78,6 +94,7 @@ phases:
         output_to: layer2
         cost_profile: quality
         timeout: 900
+        retry_count: 3
       - agent: auditor
         skill: llm_audit
         input_from: [layer2]

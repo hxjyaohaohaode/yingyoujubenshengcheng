@@ -1,4 +1,4 @@
-﻿import json
+import json
 import uuid
 import re
 import logging
@@ -421,15 +421,40 @@ async def _gather_foreshadow_context(db: AsyncSession, project_id: uuid.UUID) ->
 async def dispatch_scene_generate(project_id: uuid.UUID, scene_id: uuid.UUID,
                                   body: SceneDispatchRequest | None = None,
                                   db: AsyncSession = Depends(get_db)):
+    project_config = {}
+    try:
+        from sqlalchemy import text
+        result = await db.execute(
+            text("SELECT config FROM projects WHERE id = :pid"),
+            {"pid": str(project_id)},
+        )
+        row = result.fetchone()
+        if row and row[0]:
+            import json
+            project_config = json.loads(row[0]) if isinstance(row[0], str) else (row[0] or {})
+    except Exception:
+        pass
+
+    requirements = {
+        "user_requirements": (body.requirements or "").strip() if body else "",
+        "project_brief": project_config.get("description", ""),
+        "genre": project_config.get("genre", ""),
+        "sub_genre": project_config.get("sub_genre", ""),
+        "core_contradiction": project_config.get("core_contradiction", ""),
+        "theme": project_config.get("theme", ""),
+        "tone": project_config.get("tone", "neutral"),
+        "narrative_pov": project_config.get("narrative_pov", "third_person"),
+    }
+
     response = await enqueue_task(
         db,
         project_id=str(project_id),
         task_type="scene_generation",
-        payload={"scene_id": str(scene_id), "requirements": (body.requirements or "").strip() if body else ""},
+        payload={"scene_id": str(scene_id), "requirements": requirements.get("user_requirements", "")},
         task_kwargs={
             "project_id": str(project_id),
             "scene_id": str(scene_id),
-            "requirements": {"user_requirements": (body.requirements or "").strip() if body else ""},
+            "requirements": requirements,
         },
     )
     return TaskProgressResponse(**response)
@@ -1728,24 +1753,24 @@ async def design_emotion_curve(project_id: uuid.UUID, db: AsyncSession = Depends
     user_prompt = f"""请为以下互动影游项目设计专业的情感曲线分配方案。
 
 ━━━━━━━━━━━━━━━━━━━━━━
-📖 项目信息
+[项目] 项目信息
 ━━━━━━━━━━━━━━━━━━━━━━
-🎭 题材：{genre or '未指定'}
-🎨 基调：{tone or '未指定'}
-📐 章节数：{len(existing)}章 / 目标{target_chapters}章
+[题材] 题材：{genre or '未指定'}
+[基调] 基调：{tone or '未指定'}
+[三角尺] 章节数：{len(existing)}章 / 目标{target_chapters}章
 
 ━━━━━━━━━━━━━━━━━━━━━━
-🌍 世界观上下文
+[世界观] 世界观上下文
 ━━━━━━━━━━━━━━━━━━━━━━
 {world_context or '世界观尚未详细设定'}
 
 ━━━━━━━━━━━━━━━━━━━━━━
-👥 主要角色
+[角色] 主要角色
 ━━━━━━━━━━━━━━━━━━━━━━
 {character_summary or '角色尚未详细设定'}
 
 ━━━━━━━━━━━━━━━━━━━━━━
-📋 章节详情（含当前场景数据）
+[详情] 章节详情（含当前场景数据）
 ━━━━━━━━━━━━━━━━━━━━━━
 {json.dumps(chapters_info, ensure_ascii=False, indent=2)}
 

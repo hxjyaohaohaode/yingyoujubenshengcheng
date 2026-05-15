@@ -12,12 +12,14 @@ import {
   DeleteOutlined, SaveOutlined, HistoryOutlined, UndoOutlined,
   LoadingOutlined, FullscreenOutlined, FullscreenExitOutlined,
   MinusCircleOutlined, PlusCircleOutlined, ReloadOutlined,
+  ReadOutlined,
 } from '@ant-design/icons'
 import { useProjectStore } from '../stores/projectStore'
 import { useAgentStore } from '../stores/agentStore'
 import { api, chaptersApi, scenesApi, charactersApi } from '../api/client'
 import { eventBus, DataEvents } from '../services/eventBus'
 import { useTaskProgress } from '../hooks/useTaskProgress'
+import NarrationRenderer from '../components/NarrationRenderer'
 import ConfirmDialog from '../components/ConfirmDialog'
 import EmotionChart from '../components/EmotionChart'
 import ForeshadowTag from '../components/ForeshadowTag'
@@ -218,6 +220,7 @@ export default function SceneWorkshop() {
   const [selectedSceneId, setSelectedSceneId] = useState<string | null>(null)
   const [editScene, setEditScene] = useState<SceneData | null>(null)
   const [activeTab, setActiveTab] = useState('narration')
+  const [narrationMode, setNarrationMode] = useState<'edit' | 'preview'>('edit')
   const [hasUnsaved, setHasUnsaved] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [confirmFinalize, setConfirmFinalize] = useState<string | null>(null)
@@ -644,6 +647,33 @@ export default function SceneWorkshop() {
     }
   }, [selectedScene, isGenerating, updateAgent, projectId, genRequirements, notification])
 
+  const handleRegenerate = useCallback(async () => {
+    if (!selectedScene || isGenerating) return
+    if (!hasUnsaved && editScene) {
+      notification.info({ message: '内容已是最新', description: '当前场景无需重新生成', placement: 'topRight' })
+      return
+    }
+    updateAgent('创作Agent', { status: 'busy', currentTask: '重新生成场景' })
+    eventBus.emit(DataEvents.AI_GENERATION_STARTED, { sceneId: selectedScene.id, mode: 'regenerate' })
+    try {
+      const result = await api.post<{ task_id: string }>('/ai/projects/' + projectId + '/scenes/' + selectedScene.id + '/generate', {
+        requirements: genRequirements || '',
+        mode: 'regenerate',
+      })
+      setGenTaskId(result.task_id)
+      notification.info({ message: '已进入重新生成队列', description: '原有内容将被覆盖', placement: 'topRight' })
+    } catch (err: any) {
+      const errDetail = err?.response?.data?.detail || err?.detail || err?.message || '请稍后重试'
+      notification.error({
+        message: '重新生成失败',
+        description: String(errDetail).slice(0, 200),
+        placement: 'topRight',
+        duration: 6,
+      })
+      updateAgent('创作Agent', { status: 'idle', currentTask: undefined })
+    }
+  }, [selectedScene, isGenerating, updateAgent, projectId, genRequirements, notification, hasUnsaved, editScene])
+
   const handleCancelGenerate = useCallback(async () => {
     await genProgressHook.cancelTask()
     setGenTaskId(null)
@@ -907,7 +937,7 @@ export default function SceneWorkshop() {
               onClick={() => {
                 const defaultCh = chaptersData.length > 0 ? chaptersData[0] : null
                 const nextCode = defaultCh
-                  ? `${defaultCh.chapter_id.slice(0, 4).toUpperCase()}-S${String(defaultCh.scenes.length + 1).padStart(2, '0')}`
+                  ? `CH${String(defaultCh.chapter_number).padStart(2, '0')}-S${String(defaultCh.scenes.length + 1).padStart(2, '0')}`
                   : `SC-${String(scenes.length + 1).padStart(3, '0')}`
                 setNewSceneForm({
                   chapter_id: defaultCh?.chapter_id || '',
@@ -1033,6 +1063,7 @@ export default function SceneWorkshop() {
                 <Select
                   mode="multiple"
                   className="w-full"
+                  maxTagCount={5}
                   placeholder="选择本场景出场的角色（可多选）"
                   value={newSceneForm.characters_involved}
                   onChange={val => setNewSceneForm(prev => ({ ...prev, characters_involved: val }))}
@@ -1163,7 +1194,8 @@ export default function SceneWorkshop() {
                     <Select
                       size="small"
                       mode="multiple"
-                      className="w-[160px]"
+                      className="w-[180px]"
+                      maxTagCount={3}
                       value={editScene.characters_involved}
                       onChange={v => updateField('characters_involved', v)}
                       options={characterOptions}
@@ -1257,14 +1289,35 @@ export default function SceneWorkshop() {
                     onTabChange={setActiveTab}
                   >
                     {activeTab === 'narration' && (
-                      <TextArea
-                        className="text-[15px] leading-relaxed"
-                        style={{ lineHeight: 1.8, minHeight: '100%' }}
-                        value={editScene.narration}
-                        onChange={e => updateField('narration', e.target.value)}
-                        placeholder="输入场景描述...环境、氛围、角色状态、心理活动"
-                        data-scene-editor="narration"
-                      />
+                      <div className="flex flex-col h-full">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs text-gray-400">
+                            {narrationMode === 'edit' ? '编辑模式' : '小说预览'}
+                          </span>
+                          <Button
+                            size="small"
+                            type={narrationMode === 'preview' ? 'primary' : 'default'}
+                            icon={narrationMode === 'edit' ? <ReadOutlined /> : <EditOutlined />}
+                            onClick={() => setNarrationMode(narrationMode === 'edit' ? 'preview' : 'edit')}
+                          >
+                            {narrationMode === 'edit' ? '预览' : '编辑'}
+                          </Button>
+                        </div>
+                        {narrationMode === 'edit' ? (
+                          <TextArea
+                            className="text-[15px] leading-relaxed"
+                            style={{ lineHeight: 1.8, minHeight: '100%', flex: 1 }}
+                            value={editScene.narration}
+                            onChange={e => updateField('narration', e.target.value)}
+                            placeholder="输入场景描述...环境、氛围、角色状态、心理活动"
+                            data-scene-editor="narration"
+                          />
+                        ) : (
+                          <div className="flex-1 overflow-auto p-4 bg-white dark:bg-slate-900 rounded border border-gray-100 dark:border-slate-700">
+                            <NarrationRenderer content={editScene.narration} showMeta={true} />
+                          </div>
+                        )}
+                      </div>
                     )}
                     {activeTab === 'dialogue' && (
                       <div className="space-y-2">
@@ -1422,7 +1475,7 @@ export default function SceneWorkshop() {
                     items={[
                       {
                         key: 'causal',
-                        label: <span className="text-sm font-semibold">🔗 因果链</span>,
+                        label: <span className="text-sm font-semibold">因果链</span>,
                         children: (
                           <div className="space-y-2">
                             {(
@@ -1469,7 +1522,7 @@ export default function SceneWorkshop() {
                 <Card
                   size="small"
                   className="w-[280px] shrink-0 overflow-auto"
-                  title={<span className="text-sm">🎯 伏笔操作</span>}
+                  title={<span className="text-sm">[伏笔] 伏笔操作</span>}
                 >
                   <div className="space-y-2">
                     {editScene?.foreshadow_ops.map((fo, i) => (
@@ -1488,9 +1541,9 @@ export default function SceneWorkshop() {
                             value={fo.op_type}
                             onChange={v => updateForeshadowOp(i, 'op_type', v)}
                             options={[
-                              { value: 'plant', label: '🌱 植入' },
-                              { value: 'reinforce', label: '🔄 强化' },
-                              { value: 'reveal', label: '💡 回收' },
+                              { value: 'plant', label: '埋设 植入' },
+                              { value: 'reinforce', label: '强化 强化' },
+                              { value: 'reveal', label: '[提示] 回收' },
                             ]}
                           />
                           <Button
@@ -1527,7 +1580,7 @@ export default function SceneWorkshop() {
                   </div>
                   {incompleteForeshadows.length > 0 && (
                     <div className="mt-2 text-xs text-red-500 bg-red-50 dark:bg-red-900/10 p-2 rounded">
-                      ⚠ {incompleteForeshadows.length} 个伏笔任务未完成
+                      {incompleteForeshadows.length} 个伏笔任务未完成
                     </div>
                   )}
                 </Card>
@@ -1607,16 +1660,21 @@ export default function SceneWorkshop() {
                       </span>
                     </div>
                   )}
+                  <Tooltip title="跳转到场景文本编辑区域">
                   <Button icon={<EditOutlined />} size="small" onClick={() => {
                     const editorEl = document.querySelector('[data-scene-editor]') as HTMLElement
                     if (editorEl) {
                       editorEl.scrollIntoView({ behavior: 'smooth', block: 'center' })
                       const textArea = editorEl.querySelector('textarea') as HTMLTextAreaElement
                       if (textArea) textArea.focus()
+                      notification.success({ message: '已定位到编辑区', placement: 'topRight', duration: 2 })
+                    } else {
+                      notification.warning({ message: '请先在左侧选择场景', placement: 'topRight' })
                     }
                   }}>
                     人工编辑
                   </Button>
+                </Tooltip>
                   <Button
                     icon={<CheckCircleOutlined />}
                     size="small"
@@ -1638,14 +1696,16 @@ export default function SceneWorkshop() {
                   >
                     定稿
                   </Button>
+                  <Tooltip title="重新调用 AI 生成当前场景内容">
                   <Button
                     icon={<UndoOutlined />}
                     size="small"
-                    disabled={isGenerating}
-                    onClick={handleAIGenerate}
+                    disabled={isGenerating || editScene.status === 'final'}
+                    onClick={handleRegenerate}
                   >
                     重新生成
                   </Button>
+                </Tooltip>
                   <Button
                     icon={<HistoryOutlined />}
                     size="small"
@@ -1684,7 +1744,7 @@ export default function SceneWorkshop() {
                               latestAudit.overall_result === 'pass' ? 'green' : 'red'
                             }
                           >
-                            {latestAudit.overall_result === 'pass' ? '✓ 通过' : '✗ 封驳'}
+                            {latestAudit.overall_result === 'pass' ? '通过' : '封驳'}
                           </Tag>
                         </div>
                       ),

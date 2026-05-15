@@ -119,14 +119,14 @@ class SceneResponse(BaseModel):
     foreshadow_ops: Any = []
     choices: Any = []
     causal_chain: Optional[Any] = None
-    is_wow_moment: bool = False
+    is_wow_moment: Optional[bool] = False
     wow_type: Optional[str] = None
     wow_spec: Optional[str] = None
     characters_involved: Any = []
     status: str = "draft"
-    version: int = 1
+    version: Optional[int] = 1
     audit_reports: Any = []
-    human_reviewed: bool = False
+    human_reviewed: Optional[bool] = False
     human_feedback: Optional[str] = None
     suggestions: Any = []
     git_commit_hash: Optional[str] = None

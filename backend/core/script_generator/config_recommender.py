@@ -5,6 +5,7 @@
 """
 
 from dataclasses import dataclass
+import re
 from typing import Dict, Optional, Tuple
 
 
@@ -87,6 +88,12 @@ class ConfigRecommender:
     def recommend(cls,
                   target_word_count: int,
                   genre: str = "",
+                  sub_genre: str = "",
+                  core_contradiction: str = "",
+                  theme: str = "",
+                  tone: str = "neutral",
+                  narrative_pov: str = "third_person",
+                  style: str = "",
                   work_mode: str = "standard",
                   player_count: str = "single") -> RecommendedConfig:
         """
@@ -95,6 +102,12 @@ class ConfigRecommender:
         Args:
             target_word_count: 目标总字数
             genre: 体裁
+            sub_genre: 子类型
+            core_contradiction: 核心矛盾
+            theme: 主题
+            tone: 基调
+            narrative_pov: 叙事视角
+            style: 风格
             work_mode: 工作模式 (light/standard/heavy)
             player_count: 玩家模式 (single/dual/multi)
 
@@ -123,6 +136,45 @@ class ConfigRecommender:
         }
         pm = player_multipliers.get(player_count, 1.0)
 
+        # 用户填写越完整，推荐越应该偏向定制化而不是通用模板。
+        detail_fields = [sub_genre, core_contradiction, theme, style]
+        filled_detail_count = sum(1 for field in detail_fields if str(field).strip())
+        detail_multiplier = min(1.18, 1.0 + filled_detail_count * 0.04)
+
+        tone_depth_bonus = {
+            "dark": (0, 1, 1, -0.02, 0.04),
+            "light": (0, 0, -1, 0.03, -0.03),
+            "epic": (1, 1, 1, -0.02, 0.03),
+            "intimate": (0, 1, 0, 0.06, -0.06),
+            "neutral": (0, 0, 0, 0.0, 0.0),
+        }
+        chapter_bonus, world_bonus, plot_bonus, dialogue_bonus, narration_bonus = tone_depth_bonus.get(
+            tone, (0, 0, 0, 0.0, 0.0)
+        )
+
+        pov_depth_bonus = 1 if narrative_pov in {"multiple", "omniscient"} else 0
+        branch_depth_bonus = 1 if narrative_pov == "multiple" else 0
+
+        historical_keywords = ("历史", "王朝", "帝王", "宫廷", "战国", "春秋", "三国", "将军", "越王", "勾践")
+        emotion_keywords = ("爱情", "情感", "羁绊", "治愈", "成长", "救赎")
+        suspense_keywords = ("悬疑", "推理", "迷局", "阴谋", "真相", "线索")
+        requirement_text = " ".join(filter(None, [genre, sub_genre, core_contradiction, theme, style]))
+        mentions_historical = any(keyword in requirement_text for keyword in historical_keywords)
+        mentions_emotion = any(keyword in requirement_text for keyword in emotion_keywords)
+        mentions_suspense = any(keyword in requirement_text for keyword in suspense_keywords)
+
+        # 从用户描述中抽取 2-4 个高信息量短语，用于解释推荐依据。
+        signal_terms = []
+        for raw_text in (sub_genre, core_contradiction, theme, style):
+            for token in re.split(r"[，,、；;。\s/]+", raw_text or ""):
+                token = token.strip()
+                if len(token) >= 2 and token not in signal_terms:
+                    signal_terms.append(token)
+                if len(signal_terms) >= 4:
+                    break
+            if len(signal_terms) >= 4:
+                break
+
         # ========== 章节数计算 ==========
         # 基础逻辑：每章 5000-15000 字为最佳阅读体验
         # 短篇可以更短，长篇需要更长章节
@@ -146,7 +198,7 @@ class ConfigRecommender:
             target_words_per_chapter = 12000
 
         # 应用体裁系数调整章节密度
-        chapter_count = max(5, int(base_chapter_count * gm["chapter_density"]))
+        chapter_count = max(5, int(base_chapter_count * gm["chapter_density"] * detail_multiplier)) + chapter_bonus
         chapter_count = min(chapter_count, 500)  # 上限
 
         # ========== 每章字数范围 ==========
@@ -198,7 +250,7 @@ class ConfigRecommender:
         else:
             base_depth = 5
 
-        max_branch_depth = max(1, int(base_depth * gm["branch_depth"] * mm))
+        max_branch_depth = max(1, int(base_depth * gm["branch_depth"] * mm)) + branch_depth_bonus
         max_branch_depth = min(max_branch_depth, 10)
 
         # 确保分支深度与结局数匹配
@@ -226,6 +278,10 @@ class ConfigRecommender:
             base_wow = 4.0
 
         wow_moment_density = round(base_wow * gm["wow_density"], 1)
+        if mentions_suspense:
+            wow_moment_density += 0.3
+        if mentions_emotion and tone == "intimate":
+            wow_moment_density -= 0.2
         wow_moment_density = min(10.0, max(0.5, wow_moment_density))
 
         # ========== 世界观/角色/情节深度 ==========
@@ -241,14 +297,14 @@ class ConfigRecommender:
         else:
             depth_base = 7
 
-        world_building_depth = min(10, max(1, depth_base + 1))
-        character_depth_target = min(10, max(1, depth_base + 1))
-        plot_complexity = min(10, max(1, int(depth_base * mm)))
+        world_building_depth = min(10, max(1, depth_base + 1 + world_bonus + pov_depth_bonus + (1 if mentions_historical else 0)))
+        character_depth_target = min(10, max(1, depth_base + 1 + filled_detail_count // 2 + (1 if mentions_emotion else 0)))
+        plot_complexity = min(10, max(1, int(depth_base * mm) + plot_bonus + (1 if mentions_suspense else 0)))
 
         # ========== 对白/叙述比例 ==========
         # 互动影游对白比例较高
-        min_dialogue_ratio = 0.25
-        max_narration_ratio = 0.50
+        min_dialogue_ratio = min(0.75, max(0.15, 0.25 + dialogue_bonus))
+        max_narration_ratio = min(0.80, max(0.30, 0.50 + narration_bonus))
 
         # ========== 估算统计 ==========
         estimated_total_scenes = int(chapter_count * (scenes_min + scenes_max) / 2)
@@ -261,12 +317,22 @@ class ConfigRecommender:
             f"【{scale_cn}规模推荐】目标{word_count_wan:.0f}万字，"
             f"推荐{chapter_count}章（每章{min_wpc}-{max_wpc}字），"
             f"共约{estimated_total_scenes}个场景。"
-            f"基于{genre or '通用'}体裁，"
+            f"基于{genre or '通用'}体裁"
+            f"{f' / {sub_genre}' if sub_genre else ''}"
+            f"{f' / {tone}' if tone else ''}"
+            f"{f' / {narrative_pov}' if narrative_pov else ''}，"
             f"建议{target_ending_count}个结局、{max_branch_depth}层分支深度，"
             f"预计全篇约{estimated_wow_moments}个爽点/反转时刻。"
+            f"{(' 已纳入用户设定：' + '、'.join(signal_terms) + '。') if signal_terms else ''}"
         )
 
         genre_notes = cls._get_genre_notes(genre, word_count_wan)
+        if mentions_historical:
+            genre_notes += " 检测到历史/人物原型信息，推荐提高世界观深度与史料约束，避免生成脱离原型。"
+        if mentions_emotion:
+            genre_notes += " 检测到情感导向设定，建议提高角色深度和对白占比。"
+        if mentions_suspense:
+            genre_notes += " 检测到悬疑/推理导向，建议增加反转密度并保留更深分支。"
 
         return RecommendedConfig(
             chapter_count=chapter_count,

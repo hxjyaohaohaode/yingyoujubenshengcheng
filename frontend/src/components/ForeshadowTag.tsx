@@ -10,10 +10,10 @@ interface ForeshadowTagProps {
 }
 
 const config: Record<ForeshadowOp, { label: string; color: string; icon: string }> = {
-  plant: { label: '植入', color: '#10b981', icon: '🌱' },
-  reinforce: { label: '强化', color: '#3b82f6', icon: '🔄' },
-  reveal: { label: '回收', color: '#f59e0b', icon: '💡' },
-  clue: { label: '线索', color: '#8b5cf6', icon: '⚡' },
+  plant: { label: '植入', color: '#10b981', icon: '埋设' },
+  reinforce: { label: '强化', color: '#3b82f6', icon: '强化' },
+  reveal: { label: '回收', color: '#f59e0b', icon: '[提示]' },
+  clue: { label: '线索', color: '#8b5cf6', icon: '[事件]' },
 }
 
 export default function ForeshadowTag({ code, op, content, onClick }: ForeshadowTagProps) {

@@ -104,24 +104,17 @@ async def _design_foreshadows_async(project_id: str, core_truth: str, character_
             await gateway.close()
 
             if result.status == "completed" and result.data:
-                return result.data
+                foreshadows = result.data.get("foreshadows", [])
+                if foreshadows:
+                    return result.data
+
+                logger.warning("伏笔Agent返回数据中无foreshadows字段，尝试从完整数据构建")
+                return _ensure_foreshadows_format(result.data)
 
         except Exception as e:
             logger.warning("Foreshadow async design failed: %s", e)
 
-    return {
-        "surface_layer": [
-            {"name": "角色对话暗示", "description": f"基于核心真相'{core_truth}'设计对话暗示", "plant_strategy": "在日常对话中自然嵌入双关语和潜台词", "involved_characters": character_ids[:3]},
-            {"name": "环境线索", "description": "在场景描写中埋设视觉线索", "plant_strategy": "通过物品摆放、天气变化、光影效果暗示", "involved_characters": []},
-        ],
-        "deep_layer": [
-            {"name": "势力关系网", "description": "各方势力之间隐藏的利害关系", "plant_strategy": "通过角色不在场时的消息传递和信息差构建", "depends_on": []},
-            {"name": "行为模式伏笔", "description": "角色反复出现的特定行为暗示深层动机", "plant_strategy": "三次重复法则：第一次忽略，第二次注意，第三次揭示", "depends_on": []},
-        ],
-        "truth_layer": [
-            {"name": "核心真相反转", "description": f"最终揭示的核心真相: {core_truth}", "reveal_timing": "最终章", "wow_factor": "真相揭示将颠覆玩家对前期所有事件的理解", "depends_on_all": True},
-        ],
-    }
+    return _build_foreshadow_fallback(core_truth, character_ids)
 
 
 def _build_foreshadow_records(project_id: str, design_result: dict) -> list:
@@ -182,3 +175,61 @@ def _save_foreshadow_relations(project_id: str, design_result: dict, foreshadow_
                                 db.commit()
                             except Exception:
                                 pass
+
+
+def _ensure_foreshadows_format(data: dict) -> dict:
+    if data.get("foreshadows") and isinstance(data["foreshadows"], list):
+        return data
+
+    foreshadows = []
+    for layer_name, tier in [("surface_layer", "chapter"), ("deep_layer", "chapter"), ("truth_layer", "global")]:
+        items = data.get(layer_name, [])
+        if not isinstance(items, list):
+            continue
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            fs = {
+                "name": item.get("name", "未命名伏笔"),
+                "foreshadow_tier": tier,
+                "surface_layer": item.get("plant_strategy", item.get("description", "")),
+                "deep_layer": item.get("description", "") if tier != "chapter" else "",
+                "truth_layer": item.get("wow_factor", "") if tier == "global" else item.get("description", ""),
+                "plant_location": "1.1",
+                "reveal_location": "",
+                "reclaim_status": "unplanted",
+            }
+            foreshadows.append(fs)
+
+    if not foreshadows:
+        return data
+
+    data["foreshadows"] = foreshadows
+    data.setdefault("stats", {
+        "global_count": sum(1 for f in foreshadows if f.get("foreshadow_tier") == "global"),
+        "chapter_count": sum(1 for f in foreshadows if f.get("foreshadow_tier") == "chapter"),
+        "scene_count": sum(1 for f in foreshadows if f.get("foreshadow_tier") == "scene"),
+        "total_count": len(foreshadows),
+    })
+    return data
+
+
+def _build_foreshadow_fallback(core_truth: str, character_ids: list[str]) -> dict:
+    foreshadows = [
+        {"name": "角色对话暗示", "foreshadow_tier": "global", "surface_layer": "在日常对话中自然嵌入双关语和潜台词", "deep_layer": f"基于核心真相'{core_truth}'设计对话暗示", "truth_layer": f"对话中隐藏的线索指向核心真相: {core_truth}", "plant_location": "1.1", "reinforce_locations": ["3.2", "6.1", "10.3"], "reveal_location": "18.2", "reclaim_status": "unplanted", "worldview_refs": [], "character_refs": [{"character_name": cid, "description": "对话暗示关联角色"} for cid in character_ids[:3]], "foreshadow_links": [], "wow_factor": "回看对话发现每一句双关语都指向核心真相"},
+        {"name": "环境线索", "foreshadow_tier": "global", "surface_layer": "通过物品摆放、天气变化、光影效果暗示", "deep_layer": "环境细节中隐藏着世界观深层设定的线索", "truth_layer": f"环境异常现象的真正原因是核心真相: {core_truth}", "plant_location": "2.1", "reinforce_locations": ["5.2", "9.1"], "reveal_location": "17.1", "reclaim_status": "unplanted", "worldview_refs": [], "character_refs": [], "foreshadow_links": [], "wow_factor": "环境描写中的异常在真相揭示后获得全新含义"},
+        {"name": "势力暗线", "foreshadow_tier": "chapter", "surface_layer": "各方势力表面上的利益冲突", "deep_layer": "势力之间隐藏的利害关系和信息差", "truth_layer": "", "plant_location": "3.1", "reinforce_locations": ["7.2"], "reveal_location": "14.1", "reclaim_status": "unplanted", "worldview_refs": [], "character_refs": [], "foreshadow_links": [], "wow_factor": ""},
+        {"name": "行为模式伏笔", "foreshadow_tier": "chapter", "surface_layer": "角色反复出现的特定行为", "deep_layer": "行为暗示深层动机和隐藏秘密", "truth_layer": "", "plant_location": "4.1", "reinforce_locations": ["8.3"], "reveal_location": "15.2", "reclaim_status": "unplanted", "worldview_refs": [], "character_refs": [], "foreshadow_links": [], "wow_factor": ""},
+        {"name": "核心真相反转", "foreshadow_tier": "global", "surface_layer": "故事表层呈现的矛盾冲突", "deep_layer": "矛盾背后隐藏的更深层原因", "truth_layer": f"最终揭示的核心真相: {core_truth}", "plant_location": "1.1", "reinforce_locations": ["5.1", "10.2", "15.1"], "reveal_location": "20.1", "reclaim_status": "unplanted", "worldview_refs": [], "character_refs": [], "foreshadow_links": [], "wow_factor": "真相揭示将颠覆玩家对前期所有事件的理解"},
+    ]
+    return {
+        "foreshadows": foreshadows,
+        "design_philosophy": f"基于核心真相'{core_truth}'的降级伏笔设计（LLM调用失败时自动生成）",
+        "revelation_path": [],
+        "stats": {
+            "global_count": 3,
+            "chapter_count": 2,
+            "scene_count": 0,
+            "total_count": 5,
+        },
+    }

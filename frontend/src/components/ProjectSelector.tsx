@@ -135,7 +135,9 @@ export default function ProjectSelector({ onCreate }: { onCreate: () => void }) 
       message.success('项目已删除')
       setProjects(projects.filter(p => p.id !== projectId))
     } catch (err: any) {
-      message.error(err?.detail || '删除失败')
+      if (err?.silent || err?.name === 'AbortError') return
+      const detail = err?.response?.data?.detail || err?.detail || '删除失败，请确认后端服务是否正常运行'
+      message.error(typeof detail === 'string' ? detail : '删除失败')
     } finally {
       setDeletingId(null)
       setConfirmOpen(false)

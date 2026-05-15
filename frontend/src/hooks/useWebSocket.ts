@@ -73,6 +73,9 @@ export function useWebSocket(path: string, options: UseWebSocketOptions = {}) {
         setConnected(true)
         setReconnecting(false)
         startHeartbeat(ws)
+        try {
+          ws.send(JSON.stringify({ type: 'request_state', timestamp: Date.now() }))
+        } catch {}
         updateAgentRef.current('系统', { status: 'idle' })
         window.dispatchEvent(new CustomEvent('ws-reconnected', { detail: { projectId: currentProject?.id } }))
       }
@@ -83,6 +86,13 @@ export function useWebSocket(path: string, options: UseWebSocketOptions = {}) {
           const data = JSON.parse(event.data)
 
           if (data.type === 'pong') return
+
+          if (data.type === 'pipeline_progress' && data.reconnect_sync) {
+            updateAgentRef.current(data.agent || '系统', {
+              status: data.status || 'running',
+              currentTask: data.message || '重连同步中',
+            } as any)
+          }
 
           if ((data.type === 'agent_status' || data.type === 'agent_update') && data.agent_name && data.status) {
             updateAgentRef.current(data.agent_name, { status: data.status, currentTask: data.current_task })

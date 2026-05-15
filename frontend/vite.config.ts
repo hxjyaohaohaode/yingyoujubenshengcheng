@@ -13,11 +13,33 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:8000',
+        target: `http://127.0.0.1:${process.env.VITE_BACKEND_PORT || '8000'}`,
         changeOrigin: true,
+        timeout: 120000,
+        proxyTimeout: 120000,
+        configure: (proxy) => {
+          proxy.on('error', (err) => {
+            console.warn('[vite proxy] error:', err.message)
+          })
+          proxy.on('proxyReq', (proxyReq, req) => {
+            if (req.url?.includes('/stream') || req.url?.includes('/sse')) {
+              proxyReq.setHeader('Accept', 'text/event-stream')
+              proxyReq.setHeader('Cache-Control', 'no-cache')
+            }
+          })
+          proxy.on('proxyRes', (proxyRes, req) => {
+            const ct = proxyRes.headers['content-type'] || ''
+            if (ct.includes('text/event-stream') || req.url?.includes('/stream')) {
+              proxyRes.headers['cache-control'] = 'no-cache, no-transform'
+              proxyRes.headers['x-accel-buffering'] = 'no'
+              proxyRes.headers['connection'] = 'keep-alive'
+              delete proxyRes.headers['content-length']
+            }
+          })
+        },
       },
       '/ws': {
-        target: 'ws://127.0.0.1:8000',
+        target: 'ws://127.0.0.1:8001',
         changeOrigin: true,
         ws: true,
       },

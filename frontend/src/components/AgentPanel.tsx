@@ -5,8 +5,9 @@ import {
 import {
   RobotOutlined, CloseOutlined,
   ThunderboltOutlined, HistoryOutlined,
+  OrderedListOutlined, EditOutlined, BgColorsOutlined,
 } from '@ant-design/icons'
-import { useAgentStore, AgentStatus } from '../stores/agentStore'
+import { useAgentStore, AgentStatus, AGENT_NAME_MAP } from '../stores/agentStore'
 import { useAITaskStore } from '../stores/aiTaskStore'
 
 interface TaskItem {
@@ -20,13 +21,13 @@ interface TaskItem {
 }
 
 const AGENT_ICONS: Record<string, string> = {
-  '编排Agent': '📋',
-  '创作Agent': '✍️',
-  '审计Agent': '🔍',
-  '状态Agent': '📊',
-  '素材Agent': '🎨',
-  '伏笔Agent': '🎯',
-  '创意Agent': '💡',
+  '编排Agent': '编排',
+  '创作Agent': '创作',
+  '审计Agent': '线索',
+  '状态Agent': '概览',
+  '素材Agent': '素材',
+  '伏笔Agent': '伏笔',
+  '创意Agent': '提示',
 }
 
 export default function AgentPanel() {
@@ -86,10 +87,10 @@ export default function AgentPanel() {
           <div className="p-2 space-y-1 max-h-[280px] overflow-auto">
             {agents.map(agent => (
               <div key={agent.name} className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors">
-                <span className="text-sm">{AGENT_ICONS[agent.name] || '🤖'}</span>
+                <span className="text-xs text-gray-500">{AGENT_ICONS[agent.name] || 'Agent'}</span>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5">
-                    <span className="text-xs font-medium">{agent.name}</span>
+                    <span className="text-xs font-medium">{AGENT_NAME_MAP[agent.name] || agent.name}</span>
                     <span
                       className="inline-block w-1.5 h-1.5 rounded-full shrink-0"
                       style={{ backgroundColor: getStatusColor(agent.status) }}
@@ -129,7 +130,7 @@ export default function AgentPanel() {
               ) : (
                 displayTasks.map(task => (
                   <div key={task.id} className="flex items-center gap-1.5 p-1.5 text-xs border-b border-gray-50 dark:border-slate-800 last:border-0">
-                    <span className="text-[10px]">{AGENT_ICONS[task.agent] || '🤖'}</span>
+                    <span className="text-[10px]">{AGENT_ICONS[task.agent] || 'Agent'}</span>
                     <span className="flex-1 truncate">{task.agent} · {task.action}</span>
                     <Progress percent={task.progress} size="small" className="w-[80px]" />
                   </div>
@@ -145,7 +146,7 @@ export default function AgentPanel() {
               ) : (
                 agents.filter(a => a.status !== 'idle').map(agent => (
                   <div key={agent.name} className="text-xs p-1 text-gray-500">
-                    <span className="font-medium">{agent.name}</span>: {agent.currentTask || getStatusLabel(agent.status)}
+                    <span className="font-medium">{AGENT_NAME_MAP[agent.name] || agent.name}</span>: {agent.currentTask || getStatusLabel(agent.status)}
                   </div>
                 ))
               )}
@@ -173,7 +174,7 @@ export default function AgentPanel() {
       {runningTask && !expanded && (
         <div className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg shadow-lg p-2 text-xs max-w-[220px] animate-fade-in">
           <div className="flex items-center gap-1.5 mb-1">
-            <span>{AGENT_ICONS[runningTask.agent] || '🤖'}</span>
+            <span>{AGENT_ICONS[runningTask.agent] || 'Agent'}</span>
             <span className="font-medium">{runningTask.agent}</span>
           </div>
           <div className="text-gray-500 mb-1">{runningTask.action}</div>

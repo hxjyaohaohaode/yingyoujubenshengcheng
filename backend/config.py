@@ -30,6 +30,14 @@ DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1"
 MIMO_API_KEY = os.getenv("MIMO_API_KEY", "")
 MIMO_BASE_URL = os.getenv("MIMO_BASE_URL", "https://token-plan-cn.xiaomimimo.com/v1")
 
+BRAVE_API_KEY = os.getenv("BRAVE_API_KEY", "")
+SERPAPI_KEY = os.getenv("SERPAPI_KEY", "")
+BING_API_KEY = os.getenv("BING_API_KEY", "")
+
+FAST_LLM_API_KEY = os.getenv("FAST_LLM_API_KEY", os.getenv("DEEPSEEK_API_KEY", ""))
+FAST_LLM_BASE_URL = os.getenv("FAST_LLM_BASE_URL", "https://api.openai.com/v1")
+FAST_LLM_MODEL = os.getenv("FAST_LLM_MODEL", "gpt-4o-mini")
+
 SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key-change-in-production")
 
 GIT_REPO_PATH = os.getenv("GIT_REPO_PATH", "./data/repos")

@@ -1,13 +1,12 @@
-import { useState, useEffect } from 'react'
-import { Button, Tag, Divider, Space, Input, Spin } from 'antd'
+import { useState, useRef, useCallback, useEffect } from 'react'
+import { Button, Tag, Divider, Space, Input } from 'antd'
 import {
-  EditOutlined, RobotOutlined, CloseOutlined, SaveOutlined,
-  PlayCircleOutlined, NodeIndexOutlined, ThunderboltOutlined,
+  EditOutlined, RobotOutlined, CloseOutlined,
 } from '@ant-design/icons'
 
 const { TextArea } = Input
 
-export type CardNodeType = 'character' | 'scene' | 'foreshadow' | 'event'
+export type CardNodeType = 'character' | 'scene' | 'foreshadow' | 'event' | 'choice'
 
 export interface CardData {
   nodeType: CardNodeType
@@ -28,56 +27,105 @@ interface NodeInfoCardProps {
   onNavigateToNode: (nodeId: string) => void
   onHighlightRelated: (nodeId: string) => void
   onClearHighlight: () => void
+  onPositionChange?: (pos: { x: number; y: number }) => void
+}
+
+const TYPE_ICONS: Record<string, string> = {
+  character: '👤', scene: '🎬', foreshadow: '🔮', event: '⚡', choice: '🔀',
+}
+
+const TYPE_COLORS: Record<string, string> = {
+  character: '#6366f1', scene: '#f59e0b', foreshadow: '#10b981', event: '#ef4444', choice: '#8b5cf6',
 }
 
 export default function NodeInfoCard({
-  data,
-  position,
-  onClose,
-  onEdit,
-  onAIGenerate,
-  onNavigateToNode,
-  onHighlightRelated,
-  onClearHighlight,
+  data, position, onClose, onEdit, onAIGenerate, onNavigateToNode,
+  onHighlightRelated, onClearHighlight, onPositionChange,
 }: NodeInfoCardProps) {
   const [editing, setEditing] = useState(false)
   const [aiInstruction, setAiInstruction] = useState('')
   const [aiPanelOpen, setAiPanelOpen] = useState(false)
+  const [dragPos, setDragPos] = useState(position)
+  const [isDragging, setIsDragging] = useState(false)
+  const dragRef = useRef<{ startX: number; startY: number; startLeft: number; startTop: number } | null>(null)
+  const cardRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
+    setDragPos(position)
     setEditing(false)
     setAiPanelOpen(false)
     setAiInstruction('')
-  }, [data.nodeId])
+  }, [data.nodeId, position])
 
-  const typeIcons: Record<string, string> = {
-    character: '🎭',
-    scene: '🎬',
-    foreshadow: '🎯',
-    event: '⚡',
-  }
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (cardRef.current && !cardRef.current.contains(e.target as Node)) {
+        onClose()
+      }
+    }
+    const timer = setTimeout(() => {
+      document.addEventListener('mousedown', handleClickOutside)
+    }, 100)
+    return () => {
+      clearTimeout(timer)
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [onClose])
 
-  const typeColors: Record<string, string> = {
-    character: '#6366f1',
-    scene: '#f59e0b',
-    foreshadow: '#10b981',
-    event: '#ef4444',
-  }
+  useEffect(() => {
+    if (!isDragging) return
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!dragRef.current) return
+      const dx = e.clientX - dragRef.current.startX
+      const dy = e.clientY - dragRef.current.startY
+      const newPos = {
+        x: Math.max(0, dragRef.current.startLeft + dx),
+        y: Math.max(0, dragRef.current.startTop + dy),
+      }
+      setDragPos(newPos)
+    }
+    const handleMouseUp = () => {
+      setIsDragging(false)
+      dragRef.current = null
+      if (onPositionChange) onPositionChange(dragPos)
+    }
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [isDragging, dragPos, onPositionChange])
+
+  const handleHeaderMouseDown = useCallback((e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('button')) return
+    setIsDragging(true)
+    dragRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      startLeft: dragPos.x,
+      startTop: dragPos.y,
+    }
+  }, [dragPos.x, dragPos.y])
+
+  const color = TYPE_COLORS[data.nodeType] || '#6b7280'
+  const icon = TYPE_ICONS[data.nodeType] || '📌'
 
   return (
     <div
-      className="absolute z-50 w-[320px] bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-slate-700 overflow-hidden animate-in slide-in-from-bottom-2"
-      style={{
-        left: position.x,
-        top: position.y,
-      }}
+      ref={cardRef}
+      className="absolute z-50 w-[320px] bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-slate-700 overflow-hidden"
+      style={{ left: dragPos.x, top: dragPos.y, cursor: isDragging ? 'grabbing' : 'default' }}
       onMouseEnter={() => onHighlightRelated(data.nodeId)}
       onMouseLeave={onClearHighlight}
     >
-      <div className="flex items-center justify-between px-4 py-3 sticky top-0 z-10"
-        style={{ background: `linear-gradient(135deg, ${typeColors[data.nodeType]}12, ${typeColors[data.nodeType]}06)` }}>
+      <div
+        className="flex items-center justify-between px-4 py-3 sticky top-0 z-10 cursor-grab active:cursor-grabbing select-none"
+        style={{ background: `linear-gradient(135deg, ${color}12, ${color}06)` }}
+        onMouseDown={handleHeaderMouseDown}
+      >
         <div className="flex items-center gap-2">
-          <span className="text-xl">{typeIcons[data.nodeType]}</span>
+          <span className="text-xl">{icon}</span>
           <div>
             <div className="text-sm font-bold">{data.title}</div>
             <div className="text-[10px] opacity-50">{data.subtitle}</div>
@@ -107,9 +155,7 @@ export default function NodeInfoCard({
                 className={`flex-1 text-center ${i < data.stats.length - 1 ? 'border-r border-gray-100 dark:border-slate-700' : ''} ${stat.onClick ? 'cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700 rounded-md' : ''}`}
                 onClick={stat.onClick}
               >
-                <div className="text-sm font-bold" style={{ color: typeColors[data.nodeType] }}>
-                  {stat.value}
-                </div>
+                <div className="text-sm font-bold" style={{ color }}>{stat.value}</div>
                 <div className="text-[9px] opacity-40">{stat.label}</div>
               </div>
             ))}
@@ -126,13 +172,16 @@ export default function NodeInfoCard({
               {data.relatedItems.slice(0, 8).map((item, i) => (
                 <Tag
                   key={i}
-                  color={typeColors[item.type].slice(1)}
+                  color={(TYPE_COLORS[item.type] || '#6b7280').slice(1)}
                   className="!text-[10px] cursor-pointer hover:scale-105 transition-transform"
                   onClick={() => onNavigateToNode(item.id)}
                 >
-                  {typeIcons[item.type]} {item.label}
+                  {TYPE_ICONS[item.type] || '📌'} {item.label}
                 </Tag>
               ))}
+              {data.relatedItems.length > 8 && (
+                <Tag className="!text-[10px] opacity-50">+{data.relatedItems.length - 8}更多</Tag>
+              )}
             </div>
           </div>
         </>
@@ -142,41 +191,28 @@ export default function NodeInfoCard({
         {aiPanelOpen ? (
           <div className="space-y-2">
             <TextArea
-              size="small"
-              rows={2}
-              value={aiInstruction}
+              size="small" rows={2} value={aiInstruction}
               onChange={e => setAiInstruction(e.target.value)}
-              placeholder="输入你的修改方向，如：让这个角色性格更加阴暗..."
+              placeholder="AI修改方向..."
               className="text-xs"
             />
             <div className="flex justify-end gap-2">
               <Button size="small" onClick={() => setAiPanelOpen(false)}>取消</Button>
-              <Button
-                size="small" type="primary" icon={<RobotOutlined />}
+              <Button size="small" type="primary" icon={<RobotOutlined />}
                 onClick={() => {
                   onAIGenerate(data.nodeType, data.nodeId, aiInstruction)
                   setAiPanelOpen(false)
                   setAiInstruction('')
                 }}
-              >
-                AI 优化
-              </Button>
+              >AI 优化</Button>
             </div>
           </div>
         ) : (
           <Space className="w-full justify-end">
-            <Button
-              size="small" icon={<EditOutlined />}
-              onClick={() => onEdit(data.nodeType, data.nodeId)}
-            >
-              编辑
-            </Button>
-            <Button
-              size="small" type="primary" ghost icon={<RobotOutlined />}
-              onClick={() => setAiPanelOpen(true)}
-            >
-              AI 优化
-            </Button>
+            <Button size="small" icon={<EditOutlined />}
+              onClick={() => onEdit(data.nodeType, data.nodeId)}>编辑</Button>
+            <Button size="small" type="primary" ghost icon={<RobotOutlined />}
+              onClick={() => setAiPanelOpen(true)}>AI 优化</Button>
           </Space>
         )}
       </div>

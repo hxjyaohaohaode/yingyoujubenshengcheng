@@ -9,6 +9,7 @@ import {
 } from '@ant-design/icons'
 import { useProjectStore } from '../stores/projectStore'
 import { api, projectsApi } from '../api/client'
+import { eventBus, DataEvents } from '../services/eventBus'
 import ConfirmDialog from '../components/ConfirmDialog'
 
 const GENRES = ['武侠', '仙侠', '奇幻', '科幻', '悬疑', '都市', '历史', '古装', '末世', '游戏', '动漫', '言情', '爱情', '推理', '冒险']
@@ -55,6 +56,7 @@ export default function Settings() {
       }
       const updated = await projectsApi.update(currentProject.id, payload)
       setCurrentProject(updated)
+      eventBus.emit(DataEvents.PROJECT_CONFIG_UPDATED, { projectId: currentProject.id })
       setDirty(false)
       notification.success({ message: '项目设置已保存', placement: 'topRight' })
     } catch (e: any) {
@@ -113,7 +115,7 @@ export default function Settings() {
   }
 
   return (
-    <div style={{ fontFamily: 'var(--font-family)' }}>
+    <div style={{ fontFamily: 'var(--font-family)', flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
       <Breadcrumb
         className="mb-4 text-xs"
         items={[
@@ -123,7 +125,7 @@ export default function Settings() {
         ]}
       />
 
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24, flexShrink: 0 }}>
         <div>
           <h2 className="section-title" style={{ fontSize: 24 }}>变量规则</h2>
           <p className="text-muted" style={{ margin: '4px 0 0' }}>
@@ -144,9 +146,9 @@ export default function Settings() {
         </Space>
       </div>
 
-      <div className="max-w-2xl">
-        <Card className="mb-4" title="基本信息" size="small">
-          <div className="space-y-4">
+      <div style={{ display: 'grid', gridTemplateColumns: '3fr 2fr', gap: 16, flex: 1 }}>
+        <Card className="mb-4" title="基本信息" size="small" style={{ display: 'flex', flexDirection: 'column' }}>
+          <div className="space-y-4" style={{ flex: 1 }}>
             <div>
               <label className="text-sm text-gray-600 dark:text-gray-400 block mb-1">
                 项目名称 <span className="text-red-400">*</span>
@@ -195,21 +197,21 @@ export default function Settings() {
             <WarningOutlined className="text-red-500" />
             <span className="text-red-500">危险操作</span>
           </div>
-        } size="small">
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
+        } size="small" style={{ display: 'flex', flexDirection: 'column' }}>
+          <div className="space-y-4" style={{ flex: 1 }}>
+            <div className="flex items-center justify-between p-3 rounded-lg bg-red-50/50 dark:bg-red-900/5 border border-red-100 dark:border-red-900/20">
               <div>
                 <div className="text-sm font-medium">重置项目</div>
-                <div className="text-xs text-gray-400">将项目重置为初始状态，清除所有配置数据</div>
+                <div className="text-xs text-gray-400 mt-0.5">将项目重置为初始状态，清除所有配置数据</div>
               </div>
               <Button danger onClick={() => setConfirmReset(true)} icon={<UndoOutlined />}>
                 重置
               </Button>
             </div>
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between p-3 rounded-lg bg-red-50/50 dark:bg-red-900/5 border border-red-100 dark:border-red-900/20">
               <div>
                 <div className="text-sm font-medium">删除项目</div>
-                <div className="text-xs text-gray-400">永久删除项目及所有关联数据（角色、场景、伏笔等）</div>
+                <div className="text-xs text-gray-400 mt-0.5">永久删除项目及所有关联数据（角色、场景、伏笔等）</div>
               </div>
               <Button danger type="primary" onClick={() => setConfirmDelete(true)} icon={<DeleteOutlined />}>
                 删除项目

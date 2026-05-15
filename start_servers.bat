@@ -8,7 +8,7 @@ echo ============================================
 echo.
 
 cd /d "%SCRIPT_DIR%backend"
-echo [1/2] Starting Backend Server (port 8000)...
+echo [1/2] Starting Backend Server (port 8001)...
 echo Loading environment from .env file if present...
 if exist ".env" (
     for /f "usebackq tokens=*" %%a in (".env") do (
@@ -16,7 +16,7 @@ if exist ".env" (
         if not "!line!"=="" if not "!line:~0,1!"=="#" set %%a >nul 2>nul
     )
 )
-start "Backend Server" cmd /k "python -m uvicorn main:app --port 8000 --reload"
+start "Backend Server" cmd /k "python -m uvicorn main:app --port 8001 --reload"
 
 timeout /t 3 /nobreak >nul
 
@@ -27,7 +27,7 @@ start "Frontend Server" cmd /k "npm run dev"
 echo.
 echo ============================================
 echo   Servers are starting!
-echo   Backend:  http://localhost:8000
+echo   Backend:  http://localhost:8001
 echo   Frontend: http://localhost:5173
 echo ============================================
 echo.

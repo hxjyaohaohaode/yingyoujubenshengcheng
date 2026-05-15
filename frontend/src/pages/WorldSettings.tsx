@@ -228,8 +228,8 @@ export default function WorldSettings() {
   const lockedCount = Object.values(locks).filter(l => l.isLocked).length
 
   return (
-    <div style={{ fontFamily: 'var(--font-family)', flex: 1, overflow: 'auto' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24, flexShrink: 0 }}>
+    <div style={{ fontFamily: 'var(--font-family)', flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexShrink: 0 }}>
         <div>
           <h2 className="section-title" style={{ fontSize: 24 }}>世界观与改编策略</h2>
           <p className="text-muted" style={{ margin: '4px 0 0' }}>
@@ -304,13 +304,13 @@ export default function WorldSettings() {
 
           {!isContentEmpty && !isLocked && (
             <div className="text-xs text-amber-500 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 rounded-md px-3 py-1.5 flex-shrink-0">
-              ⚠ 内容已填写但未锁定，切换左侧导航前建议先锁定
+              内容已填写但未锁定，切换左侧导航前建议先锁定
             </div>
           )}
 
           {isContentEmpty && !isLocked && (
             <div className="text-xs text-red-500 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-md px-3 py-1.5 flex-shrink-0">
-              ⚠ 内容尚未填写
+              内容尚未填写
             </div>
           )}
 
@@ -331,7 +331,7 @@ export default function WorldSettings() {
             </Card>
           )}
 
-          <div className="flex-1 min-h-0">
+          <div className="flex-1 min-h-0 flex flex-col">
             <TextArea
               value={content[activeKey] || ''}
               onChange={e => handleChange(e.target.value)}
@@ -339,11 +339,11 @@ export default function WorldSettings() {
               placeholder={`请输入${activeConfig.label}的详细设定...`}
               disabled={isLocked}
               className={`
-                h-full text-[15px] leading-relaxed resize-none
+                text-[15px] leading-relaxed resize-none
                 ${isLocked ? 'bg-gray-100 dark:bg-slate-800 text-gray-500 dark:text-gray-500 cursor-not-allowed' : ''}
                 ${isContentEmpty ? 'border-red-300 dark:border-red-700' : ''}
               `}
-              style={{ height: '100%', lineHeight: 1.8 }}
+              style={{ height: '100%', lineHeight: 1.8, flex: 1 }}
             />
           </div>
         </div>

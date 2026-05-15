@@ -144,9 +144,9 @@ export default function Foreshadows() {
 
   const { progress: aiProgress, status: aiStatus } = useTaskProgress(aiGenerateTaskId)
 
-  const abortRef = useRef<AbortController | null>(null)
+  const mountedRef = useRef(true)
 
-  const fetchData = async (signal?: AbortSignal) => {
+  const fetchData = useCallback(async () => {
     if (!projectId) {
       setForeshadows([])
       setRelations([])
@@ -159,49 +159,40 @@ export default function Foreshadows() {
         foreshadowsApi.list(projectId, {
           ...(typeFilter !== 'all' ? { fs_type: typeFilter } : {}),
           ...(statusFilter !== 'all' ? { current_status: statusFilter } : {}),
-        }, signal),
-        foreshadowsApi.listRelations(projectId, signal),
+        }),
+        foreshadowsApi.listRelations(projectId),
       ])
-      if (signal?.aborted) return
+      if (!mountedRef.current) return
       setForeshadows(fsList.map(mapFS))
       setRelations(relList.map(mapRel))
     } catch (e: any) {
-      if (signal?.aborted || e?.name === 'AbortError' || e?.detail === '请求已取消') return
+      if (!mountedRef.current) return
       notification.error({ message: '加载伏笔数据失败', description: e?.detail || e?.message || '未知错误', placement: 'topRight' })
     }
-    if (!signal?.aborted) setLoading(false)
-  }
-
-  const refreshData = useCallback(() => {
-    abortRef.current?.abort()
-    const ctrl = new AbortController()
-    abortRef.current = ctrl
-    return fetchData(ctrl.signal)
+    if (mountedRef.current) setLoading(false)
   }, [projectId, typeFilter, statusFilter])
 
   useEffect(() => {
-    abortRef.current?.abort()
-    const ctrl = new AbortController()
-    abortRef.current = ctrl
-    fetchData(ctrl.signal)
-    return () => { ctrl.abort() }
-  }, [projectId, typeFilter, statusFilter])
+    mountedRef.current = true
+    fetchData()
+    return () => { mountedRef.current = false }
+  }, [fetchData])
 
   useEffect(() => {
     const unsubs = [
-      eventBus.on(DataEvents.SCENE_UPDATED, () => { refreshData() }),
-      eventBus.on(DataEvents.CHAPTER_UPDATED, () => { refreshData() }),
-      eventBus.on(DataEvents.CHARACTER_UPDATED, () => { refreshData() }),
-      eventBus.on(DataEvents.PROJECT_SWITCHED, () => { refreshData() }),
+      eventBus.on(DataEvents.SCENE_UPDATED, () => { fetchData() }),
+      eventBus.on(DataEvents.CHAPTER_UPDATED, () => { fetchData() }),
+      eventBus.on(DataEvents.CHARACTER_UPDATED, () => { fetchData() }),
+      eventBus.on(DataEvents.PROJECT_SWITCHED, () => { fetchData() }),
     ]
     return () => unsubs.forEach(u => u())
-  }, [refreshData])
+  }, [fetchData])
 
   useEffect(() => {
     if (aiStatus === 'completed') {
       setAiGenerateTaskId(null)
       notification.success({ message: 'AI伏笔体系设计完成', placement: 'topRight' })
-      refreshData()
+      fetchData()
     }
     if (aiStatus === 'failed') {
       setAiGenerateTaskId(null)
@@ -537,7 +528,7 @@ export default function Foreshadows() {
     nodeSelection.filter((d: any) => d.nodeCategory === 'foreshadow')
       .append('text')
       .text((d: any) => {
-        const icons: Record<string, string> = { global: '★', chapter: '◆', scene: '●', interactive: '▲' }
+        const icons: Record<string, string> = { global: '全', chapter: '章', scene: '场', interactive: '互' }
         return icons[d.fsType] || '●'
       })
       .attr('text-anchor', 'middle')
@@ -549,7 +540,7 @@ export default function Foreshadows() {
 
     nodeSelection.filter((d: any) => d.nodeCategory === 'worldview')
       .append('text')
-      .text('🌐')
+      .text('W')
       .attr('text-anchor', 'middle')
       .attr('dy', 4)
       .style('font-size', '12px')
@@ -557,7 +548,7 @@ export default function Foreshadows() {
 
     nodeSelection.filter((d: any) => d.nodeCategory === 'character')
       .append('text')
-      .text('👤')
+      .text('C')
       .attr('text-anchor', 'middle')
       .attr('dy', 4)
       .style('font-size', '11px')
@@ -565,7 +556,7 @@ export default function Foreshadows() {
 
     nodeSelection.filter((d: any) => d.nodeCategory === 'scene')
       .append('text')
-      .text('📍')
+      .text('地点')
       .attr('text-anchor', 'middle')
       .attr('dy', 4)
       .style('font-size', '10px')
@@ -982,7 +973,7 @@ export default function Foreshadows() {
             <div className="flex-1 relative" style={{ minHeight: 280 }}>
               <svg ref={svgRef} style={{ width: '100%', height: '100%', display: 'block' }} />
             </div>
-            <p className="text-[10px] text-gray-400 px-3 py-1 shrink-0">🖱 缩放/拖拽 · 点击节点查看详情</p>
+            <p className="text-[10px] text-gray-400 px-3 py-1 shrink-0">缩放/拖拽 · 点击节点查看详情</p>
           </div>
         )}
       </Card>
@@ -1051,29 +1042,29 @@ export default function Foreshadows() {
               {/* 三层结构 */}
               <div className="space-y-2 mb-3">
                 <div className="bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-md p-2.5">
-                  <div className="text-[10px] text-gray-400 mb-1 font-semibold">🔍 表面层</div>
+                  <div className="text-[10px] text-gray-400 mb-1 font-semibold">线索 表面层</div>
                   <p className="text-xs m-0 text-gray-600 dark:text-gray-400">{selectedFS.surface_layer || <span className="text-red-400 italic">未填写</span>}</p>
                 </div>
                 <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-md p-2.5">
-                  <div className="text-[10px] text-blue-500 mb-1 font-semibold">🔍 深层</div>
+                  <div className="text-[10px] text-blue-500 mb-1 font-semibold">线索 深层</div>
                   <p className="text-xs m-0 text-blue-700 dark:text-blue-300">{selectedFS.deep_layer || <span className="text-red-400 italic">未填写</span>}</p>
                 </div>
                 <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 rounded-md p-2.5">
-                  <div className="text-[10px] text-amber-600 mb-1 font-semibold">🔍 真相层</div>
+                  <div className="text-[10px] text-amber-600 mb-1 font-semibold">线索 真相层</div>
                   <p className="text-xs m-0 text-amber-800 dark:text-amber-300">{selectedFS.truth_layer || <span className="text-red-400 italic">未填写</span>}</p>
                 </div>
               </div>
 
               {/* 时间线 */}
               <div className="mb-3 p-2 bg-gray-50 dark:bg-slate-800 rounded">
-                <div className="text-xs text-gray-400 mb-1 font-semibold">⏱ 伏笔时间线</div>
+                <div className="text-xs text-gray-400 mb-1 font-semibold">伏笔时间线</div>
                 <div className="flex items-center gap-1 text-xs flex-wrap">
-                  <Tag color="purple" className="text-[10px]">🌱 埋设</Tag>
+                  <Tag color="purple" className="text-[10px]">埋设 埋设</Tag>
                   {selectedFS.reinforce_scenes.length > 0 ? (
-                    selectedFS.reinforce_scenes.map((_, i) => <Tag key={i} color="blue" className="text-[10px]">🔄 强化{i + 1}</Tag>)
+                    selectedFS.reinforce_scenes.map((_, i) => <Tag key={i} color="blue" className="text-[10px]">强化 强化{i + 1}</Tag>)
                   ) : <span className="text-gray-300 text-xs">暂无强化</span>}
                   <Tag color={selectedFS.reveal_scene_id ? 'gold' : 'default'} className="text-[10px]">
-                    💡 {selectedFS.reveal_scene_id ? '回收' : '未规划回收'}
+                    [提示] {selectedFS.reveal_scene_id ? '回收' : '未规划回收'}
                   </Tag>
                 </div>
               </div>
@@ -1081,7 +1072,7 @@ export default function Foreshadows() {
               {/* 哇塞方案 */}
               <div className="mb-3">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs text-gray-400 font-semibold">⭐ 哇塞方案</span>
+                  <span className="text-xs text-gray-400 font-semibold">哇塞方案</span>
                   <Button size="small" type="link" icon={<BulbOutlined />} loading={wowGenerating} onClick={handleAIWowPlan} className="text-xs">生成方案</Button>
                 </div>
                 {selectedFS.wow_plans.length === 0 ? (
@@ -1168,19 +1159,19 @@ export default function Foreshadows() {
                 <div className="space-y-1">
                   {selectedFS.plant_location && (
                     <div className="flex items-center gap-2 text-xs">
-                      <Tag color="purple" className="text-[10px]">🌱 埋设</Tag>
+                      <Tag color="purple" className="text-[10px]">埋设 埋设</Tag>
                       <span className="text-gray-600 dark:text-gray-400">{selectedFS.plant_location}</span>
                     </div>
                   )}
                   {selectedFS.reinforce_locations?.length > 0 && selectedFS.reinforce_locations.map((loc, i) => (
                     <div key={i} className="flex items-center gap-2 text-xs">
-                      <Tag color="blue" className="text-[10px]">🔄 强化{i + 1}</Tag>
+                      <Tag color="blue" className="text-[10px]">强化 强化{i + 1}</Tag>
                       <span className="text-gray-600 dark:text-gray-400">{loc}</span>
                     </div>
                   ))}
                   {selectedFS.reveal_location && (
                     <div className="flex items-center gap-2 text-xs">
-                      <Tag color="gold" className="text-[10px]">💡 揭露</Tag>
+                      <Tag color="gold" className="text-[10px]">[提示] 揭露</Tag>
                       <span className="text-gray-600 dark:text-gray-400">{selectedFS.reveal_location}</span>
                     </div>
                   )}
