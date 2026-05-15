@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
-import { Modal, Card, Button, Input, App } from 'antd'
+import { Modal, Card, Button, Input, App, Collapse, Badge } from 'antd'
 import {
   KeyOutlined, ApiOutlined, CheckCircleOutlined,
+  SearchOutlined, GlobalOutlined,
 } from '@ant-design/icons'
 import { api } from '../api/client'
 
@@ -10,6 +11,9 @@ interface LLMConfig {
   deepseek_api_key: string
   mimo_base_url: string
   mimo_api_key: string
+  brave_api_key: string
+  serpapi_key: string
+  bing_api_key: string
 }
 
 interface LLMConfigModalProps {
@@ -24,12 +28,18 @@ export default function LLMConfigModal({ open, onClose }: LLMConfigModalProps) {
     deepseek_api_key: '',
     mimo_base_url: '',
     mimo_api_key: '',
+    brave_api_key: '',
+    serpapi_key: '',
+    bing_api_key: '',
   })
   const [originalConfig, setOriginalConfig] = useState<LLMConfig>({
     deepseek_base_url: '',
     deepseek_api_key: '',
     mimo_base_url: '',
     mimo_api_key: '',
+    brave_api_key: '',
+    serpapi_key: '',
+    bing_api_key: '',
   })
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -48,12 +58,18 @@ export default function LLMConfigModal({ open, onClose }: LLMConfigModalProps) {
         deepseek_api_key_set: boolean
         mimo_base_url: string
         mimo_api_key_set: boolean
+        brave_api_key_set: boolean
+        serpapi_key_set: boolean
+        bing_api_key_set: boolean
       }>('/config/llm')
       const newConfig: LLMConfig = {
         deepseek_base_url: data.deepseek_base_url || '',
         deepseek_api_key: data.deepseek_api_key_set ? '••••••••' : '',
         mimo_base_url: data.mimo_base_url || '',
         mimo_api_key: data.mimo_api_key_set ? '••••••••' : '',
+        brave_api_key: data.brave_api_key_set ? '••••••••' : '',
+        serpapi_key: data.serpapi_key_set ? '••••••••' : '',
+        bing_api_key: data.bing_api_key_set ? '••••••••' : '',
       }
       setConfig(newConfig)
       setOriginalConfig({ ...newConfig })
@@ -71,24 +87,35 @@ export default function LLMConfigModal({ open, onClose }: LLMConfigModalProps) {
     setConfig(prev => ({ ...prev, [key]: value }))
   }
 
-  const handleSaveProvider = async (provider: 'deepseek' | 'mimo') => {
+  const handleSaveProvider = async (provider: 'deepseek' | 'mimo' | 'search') => {
     setSaving(true)
     try {
-      const payload: Partial<LLMConfig> = {}
+      const payload: any = {}
       if (provider === 'deepseek') {
         payload.deepseek_base_url = config.deepseek_base_url || undefined
         if (config.deepseek_api_key && config.deepseek_api_key !== '••••••••') {
           payload.deepseek_api_key = config.deepseek_api_key
         }
-      } else {
+      } else if (provider === 'mimo') {
         payload.mimo_base_url = config.mimo_base_url || undefined
         if (config.mimo_api_key && config.mimo_api_key !== '••••••••') {
           payload.mimo_api_key = config.mimo_api_key
         }
+      } else {
+        if (config.brave_api_key && config.brave_api_key !== '••••••••') {
+          payload.brave_api_key = config.brave_api_key
+        }
+        if (config.serpapi_key && config.serpapi_key !== '••••••••') {
+          payload.serpapi_key = config.serpapi_key
+        }
+        if (config.bing_api_key && config.bing_api_key !== '••••••••') {
+          payload.bing_api_key = config.bing_api_key
+        }
       }
 
       await api.post('/config/llm', payload)
-      notification.success({ message: `${provider === 'deepseek' ? 'DeepSeek' : 'MiMo'} 配置已生效`, placement: 'topRight' })
+      const label = provider === 'deepseek' ? 'DeepSeek' : provider === 'mimo' ? 'MiMo' : '搜索'
+      notification.success({ message: `${label} 配置已生效`, placement: 'topRight' })
       await fetchConfig()
     } catch (e: any) {
       notification.error({
@@ -108,18 +135,27 @@ export default function LLMConfigModal({ open, onClose }: LLMConfigModalProps) {
     config.mimo_base_url !== originalConfig.mimo_base_url ||
     (config.mimo_api_key !== originalConfig.mimo_api_key && config.mimo_api_key !== '••••••••')
 
+  const hasSearchChanges =
+    (config.brave_api_key !== originalConfig.brave_api_key && config.brave_api_key !== '••••••••') ||
+    (config.serpapi_key !== originalConfig.serpapi_key && config.serpapi_key !== '••••••••') ||
+    (config.bing_api_key !== originalConfig.bing_api_key && config.bing_api_key !== '••••••••')
+
+  const deepseekReady = originalConfig.deepseek_api_key === '••••••••'
+  const mimoReady = originalConfig.mimo_api_key === '••••••••'
+  const searchReady = originalConfig.brave_api_key === '••••••••' || originalConfig.serpapi_key === '••••••••' || originalConfig.bing_api_key === '••••••••'
+
   return (
     <Modal
-      title="大模型 API 配置"
+      title="外部服务 API 配置"
       open={open}
       onCancel={onClose}
       footer={null}
-      width={560}
+      width={600}
       destroyOnHidden
     >
       <div style={{ marginTop: 8 }}>
         <p className="text-muted text-sm" style={{ marginBottom: 16 }}>
-          配置 DeepSeek 和 MiMo 的 API 接入信息，修改后即时生效
+          配置大模型和联网搜索的 API 接入信息，修改后即时生效。至少配置一个 LLM 提供商才能使用创作功能。
         </p>
 
         <Card
@@ -127,9 +163,9 @@ export default function LLMConfigModal({ open, onClose }: LLMConfigModalProps) {
           title={
             <div className="flex items-center gap-2">
               <ApiOutlined style={{ color: '#1677ff' }} />
-              <span>DeepSeek</span>
-              {originalConfig.deepseek_api_key && originalConfig.deepseek_api_key !== '' && (
-                <CheckCircleOutlined style={{ color: '#52c41a', fontSize: 14 }} />
+              <span>DeepSeek（创作 / 审计 / 伏笔 / 创意）</span>
+              {deepseekReady && (
+                <Badge status="success" />
               )}
             </div>
           }
@@ -160,7 +196,7 @@ export default function LLMConfigModal({ open, onClose }: LLMConfigModalProps) {
             </div>
             <div>
               <label className="text-sm text-gray-600 dark:text-gray-400 block mb-1">
-                API 密钥
+                API 密钥 <span className="text-red-400">*</span>
               </label>
               <Input.Password
                 value={config.deepseek_api_key}
@@ -168,10 +204,13 @@ export default function LLMConfigModal({ open, onClose }: LLMConfigModalProps) {
                 placeholder="sk-..."
                 iconRender={visible => (visible ? <KeyOutlined /> : <KeyOutlined />)}
               />
-              {originalConfig.deepseek_api_key === '••••••••' && config.deepseek_api_key === '••••••••' && (
+              {deepseekReady && config.deepseek_api_key === '••••••••' && (
                 <div className="text-xs text-green-500 mt-1 flex items-center gap-1">
-                  <CheckCircleOutlined /> 已配置 API 密钥
+                  <CheckCircleOutlined /> 已配置
                 </div>
+              )}
+              {!deepseekReady && (
+                <div className="text-xs text-amber-500 mt-1">未配置 — 创作类功能将不可用</div>
               )}
             </div>
           </div>
@@ -182,9 +221,9 @@ export default function LLMConfigModal({ open, onClose }: LLMConfigModalProps) {
           title={
             <div className="flex items-center gap-2">
               <ApiOutlined style={{ color: '#fa8c16' }} />
-              <span>MiMo</span>
-              {originalConfig.mimo_api_key && originalConfig.mimo_api_key !== '' && (
-                <CheckCircleOutlined style={{ color: '#52c41a', fontSize: 14 }} />
+              <span>MiMo（状态 / 素材 / 编排）</span>
+              {mimoReady && (
+                <Badge status="success" />
               )}
             </div>
           }
@@ -223,9 +262,91 @@ export default function LLMConfigModal({ open, onClose }: LLMConfigModalProps) {
                 placeholder="..."
                 iconRender={visible => (visible ? <KeyOutlined /> : <KeyOutlined />)}
               />
-              {originalConfig.mimo_api_key === '••••••••' && config.mimo_api_key === '••••••••' && (
+              {mimoReady && config.mimo_api_key === '••••••••' && (
                 <div className="text-xs text-green-500 mt-1 flex items-center gap-1">
-                  <CheckCircleOutlined /> 已配置 API 密钥
+                  <CheckCircleOutlined /> 已配置
+                </div>
+              )}
+              {!mimoReady && (
+                <div className="text-xs text-gray-400 mt-1">可选 — 未配置时将使用 DeepSeek 作为回退</div>
+              )}
+            </div>
+          </div>
+        </Card>
+
+        <Card
+          className="mb-4"
+          title={
+            <div className="flex items-center gap-2">
+              <GlobalOutlined style={{ color: '#52c41a' }} />
+              <span>联网搜索（可选）</span>
+              {searchReady && (
+                <Badge status="success" />
+              )}
+            </div>
+          }
+          size="small"
+          extra={
+            <Button
+              type="primary"
+              size="small"
+              loading={saving}
+              disabled={!hasSearchChanges}
+              onClick={() => handleSaveProvider('search')}
+            >
+              保存并生效
+            </Button>
+          }
+        >
+          <div className="space-y-4">
+            <div className="text-xs text-gray-400" style={{ marginBottom: 8 }}>
+              至少配置一个搜索引擎即可启用联网搜索。未配置时将使用 DuckDuckGo 免费搜索（可能不稳定）。
+            </div>
+            <div>
+              <label className="text-sm text-gray-600 dark:text-gray-400 block mb-1">
+                <SearchOutlined className="mr-1" />Brave Search API Key
+              </label>
+              <Input.Password
+                value={config.brave_api_key}
+                onChange={e => updateField('brave_api_key', e.target.value)}
+                placeholder="BSA-..."
+                iconRender={visible => (visible ? <KeyOutlined /> : <KeyOutlined />)}
+              />
+              {originalConfig.brave_api_key === '••••••••' && config.brave_api_key === '••••••••' && (
+                <div className="text-xs text-green-500 mt-1 flex items-center gap-1">
+                  <CheckCircleOutlined /> 已配置
+                </div>
+              )}
+            </div>
+            <div>
+              <label className="text-sm text-gray-600 dark:text-gray-400 block mb-1">
+                <SearchOutlined className="mr-1" />SerpAPI Key
+              </label>
+              <Input.Password
+                value={config.serpapi_key}
+                onChange={e => updateField('serpapi_key', e.target.value)}
+                placeholder="..."
+                iconRender={visible => (visible ? <KeyOutlined /> : <KeyOutlined />)}
+              />
+              {originalConfig.serpapi_key === '••••••••' && config.serpapi_key === '••••••••' && (
+                <div className="text-xs text-green-500 mt-1 flex items-center gap-1">
+                  <CheckCircleOutlined /> 已配置
+                </div>
+              )}
+            </div>
+            <div>
+              <label className="text-sm text-gray-600 dark:text-gray-400 block mb-1">
+                <SearchOutlined className="mr-1" />Bing Search API Key
+              </label>
+              <Input.Password
+                value={config.bing_api_key}
+                onChange={e => updateField('bing_api_key', e.target.value)}
+                placeholder="..."
+                iconRender={visible => (visible ? <KeyOutlined /> : <KeyOutlined />)}
+              />
+              {originalConfig.bing_api_key === '••••••••' && config.bing_api_key === '••••••••' && (
+                <div className="text-xs text-green-500 mt-1 flex items-center gap-1">
+                  <CheckCircleOutlined /> 已配置
                 </div>
               )}
             </div>

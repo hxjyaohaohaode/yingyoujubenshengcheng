@@ -310,6 +310,9 @@ class LLMConfigUpdate(BaseModel):
     deepseek_api_key: str | None = None
     mimo_base_url: str | None = None
     mimo_api_key: str | None = None
+    brave_api_key: str | None = None
+    serpapi_key: str | None = None
+    bing_api_key: str | None = None
 
 
 @app.get("/api/config/models")
@@ -336,6 +339,9 @@ async def get_llm_config():
         "deepseek_api_key_set": bool(os.getenv("DEEPSEEK_API_KEY", "")),
         "mimo_base_url": MIMO_BASE_URL,
         "mimo_api_key_set": bool(os.getenv("MIMO_API_KEY", "")),
+        "brave_api_key_set": bool(os.getenv("BRAVE_API_KEY", "")),
+        "serpapi_key_set": bool(os.getenv("SERPAPI_KEY", "")),
+        "bing_api_key_set": bool(os.getenv("BING_API_KEY", "")),
     }
 
 
@@ -376,6 +382,27 @@ async def update_llm_config(body: LLMConfigUpdate):
         os.environ["MIMO_API_KEY"] = body.mimo_api_key
         env_updates["MIMO_API_KEY"] = body.mimo_api_key
         updated.append("mimo_api_key")
+
+    if body.brave_api_key is not None:
+        os.environ["BRAVE_API_KEY"] = body.brave_api_key
+        import core.search.brave_search as _bs
+        _bs.BRAVE_API_KEY = body.brave_api_key
+        env_updates["BRAVE_API_KEY"] = body.brave_api_key
+        updated.append("brave_api_key")
+
+    if body.serpapi_key is not None:
+        os.environ["SERPAPI_KEY"] = body.serpapi_key
+        import core.search.brave_search as _bs2
+        _bs2.SERPAPI_KEY = body.serpapi_key
+        env_updates["SERPAPI_KEY"] = body.serpapi_key
+        updated.append("serpapi_key")
+
+    if body.bing_api_key is not None:
+        os.environ["BING_API_KEY"] = body.bing_api_key
+        import core.search.brave_search as _bs3
+        _bs3.BING_API_KEY = body.bing_api_key
+        env_updates["BING_API_KEY"] = body.bing_api_key
+        updated.append("bing_api_key")
 
     if env_updates:
         env_path = Path(__file__).parent / ".env"

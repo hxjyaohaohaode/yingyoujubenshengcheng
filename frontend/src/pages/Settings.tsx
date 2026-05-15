@@ -6,6 +6,7 @@ import {
 import {
   SaveOutlined, WarningOutlined, DeleteOutlined, UndoOutlined,
   HomeOutlined, SettingOutlined,
+  RobotOutlined, ApiOutlined, CheckCircleOutlined,
 } from '@ant-design/icons'
 import { useProjectStore } from '../stores/projectStore'
 import { api, projectsApi } from '../api/client'
@@ -27,6 +28,11 @@ export default function Settings() {
   const [dirty, setDirty] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [confirmReset, setConfirmReset] = useState(false)
+  const [apiStatus, setApiStatus] = useState<{
+    deepseek: boolean
+    mimo: boolean
+    search: boolean
+  }>({ deepseek: false, mimo: false, search: false })
 
   useEffect(() => {
     if (currentProject) {
@@ -37,6 +43,22 @@ export default function Settings() {
       })
     }
   }, [currentProject])
+
+  useEffect(() => {
+    api.get<{
+      deepseek_api_key_set: boolean
+      mimo_api_key_set: boolean
+      brave_api_key_set: boolean
+      serpapi_key_set: boolean
+      bing_api_key_set: boolean
+    }>('/config/llm').then(data => {
+      setApiStatus({
+        deepseek: data.deepseek_api_key_set,
+        mimo: data.mimo_api_key_set,
+        search: data.brave_api_key_set || data.serpapi_key_set || data.bing_api_key_set,
+      })
+    }).catch(() => {})
+  }, [])
 
   const updateField = <K extends keyof typeof settings>(key: K, value: typeof settings[K]) => {
     setSettings(prev => ({ ...prev, [key]: value }))
@@ -107,8 +129,59 @@ export default function Settings() {
     return (
       <div style={{ fontFamily: 'var(--font-family)' }}>
         <h2 className="section-title" style={{ fontSize: 24 }}>变量规则</h2>
-        <div className="card-surface" style={{ textAlign: 'center', padding: 48 }}>
-          <Empty description={<span className="text-muted">请先创建或选择一个项目</span>} />
+        <Card
+          title={
+            <div className="flex items-center gap-2">
+              <ApiOutlined style={{ color: '#1677ff' }} />
+              <span>外部服务 API 配置</span>
+            </div>
+          }
+          size="small"
+          extra={
+            <Button
+              type="primary"
+              icon={<RobotOutlined />}
+              onClick={() => window.dispatchEvent(new Event('open-llm-config'))}
+            >
+              配置 API
+            </Button>
+          }
+          style={{ maxWidth: 500 }}
+        >
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm">DeepSeek（创作 / 审计 / 伏笔 / 创意）</span>
+              {apiStatus.deepseek ? (
+                <span className="text-xs text-green-500 flex items-center gap-1"><CheckCircleOutlined /> 已配置</span>
+              ) : (
+                <span className="text-xs text-amber-500">未配置</span>
+              )}
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm">MiMo（状态 / 素材 / 编排）</span>
+              {apiStatus.mimo ? (
+                <span className="text-xs text-green-500 flex items-center gap-1"><CheckCircleOutlined /> 已配置</span>
+              ) : (
+                <span className="text-xs text-gray-400">可选</span>
+              )}
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm">联网搜索（Brave / SerpAPI / Bing）</span>
+              {apiStatus.search ? (
+                <span className="text-xs text-green-500 flex items-center gap-1"><CheckCircleOutlined /> 已配置</span>
+              ) : (
+                <span className="text-xs text-gray-400">可选</span>
+              )}
+            </div>
+            {!apiStatus.deepseek && (
+              <div className="text-xs text-amber-500 mt-2 p-2 rounded" style={{ background: 'var(--color-accent-soft)' }}>
+                ⚠️ DeepSeek API 未配置，创作类功能将不可用。请点击「配置 API」按钮填写。
+              </div>
+            )}
+          </div>
+        </Card>
+        <div className="card-surface" style={{ textAlign: 'center', padding: 48, marginTop: 16 }}>
+          <Empty description={<span className="text-muted">请先创建或选择一个项目以编辑项目设置</span>} />
         </div>
       </div>
     )
@@ -147,50 +220,117 @@ export default function Settings() {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '3fr 2fr', gap: 16, flex: 1 }}>
-        <Card className="mb-4" title="基本信息" size="small" style={{ display: 'flex', flexDirection: 'column' }}>
-          <div className="space-y-4" style={{ flex: 1 }}>
-            <div>
-              <label className="text-sm text-gray-600 dark:text-gray-400 block mb-1">
-                项目名称 <span className="text-red-400">*</span>
-              </label>
-              <Input
-                value={settings.title}
-                onChange={e => updateField('title', e.target.value)}
-                placeholder="请输入项目名称"
-                status={!settings.title.trim() ? 'error' : undefined}
-              />
-              {!settings.title.trim() && (
-                <div className="text-xs text-red-400 mt-0.5">项目名称不能为空</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <Card title="基本信息" size="small">
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm text-gray-600 dark:text-gray-400 block mb-1">
+                  项目名称 <span className="text-red-400">*</span>
+                </label>
+                <Input
+                  value={settings.title}
+                  onChange={e => updateField('title', e.target.value)}
+                  placeholder="请输入项目名称"
+                  status={!settings.title.trim() ? 'error' : undefined}
+                />
+                {!settings.title.trim() && (
+                  <div className="text-xs text-red-400 mt-0.5">项目名称不能为空</div>
+                )}
+              </div>
+              <div>
+                <label className="text-sm text-gray-600 dark:text-gray-400 block mb-1">题材</label>
+                <Select
+                  className="w-full"
+                  value={settings.genre || undefined}
+                  onChange={v => updateField('genre', v)}
+                  placeholder="选择题材"
+                  options={GENRES.map(g => ({ value: g, label: g }))}
+                  allowClear
+                />
+              </div>
+              <div>
+                <label className="text-sm text-gray-600 dark:text-gray-400 block mb-1">目标字数</label>
+                <Select
+                  className="w-full"
+                  value={settings.target_words}
+                  onChange={v => updateField('target_words', v)}
+                  options={[
+                    { value: 50000, label: '5万字（短篇）' },
+                    { value: 150000, label: '15万字（中篇）' },
+                    { value: 500000, label: '50万字（长篇）' },
+                    { value: 1000000, label: '100万字（超长篇）' },
+                    { value: 1500000, label: '150万字（史诗）' },
+                  ]}
+                />
+              </div>
+            </div>
+          </Card>
+
+          <Card
+            title={
+              <div className="flex items-center gap-2">
+                <ApiOutlined style={{ color: '#1677ff' }} />
+                <span>外部服务 API 配置</span>
+              </div>
+            }
+            size="small"
+            extra={
+              <Button
+                icon={<RobotOutlined />}
+                onClick={() => window.dispatchEvent(new Event('open-llm-config'))}
+              >
+                配置 API
+              </Button>
+            }
+          >
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm">DeepSeek</span>
+                  <span className="text-xs text-gray-400">创作 / 审计 / 伏笔 / 创意</span>
+                </div>
+                {apiStatus.deepseek ? (
+                  <span className="text-xs text-green-500 flex items-center gap-1">
+                    <CheckCircleOutlined /> 已配置
+                  </span>
+                ) : (
+                  <span className="text-xs text-amber-500">未配置</span>
+                )}
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm">MiMo</span>
+                  <span className="text-xs text-gray-400">状态 / 素材 / 编排</span>
+                </div>
+                {apiStatus.mimo ? (
+                  <span className="text-xs text-green-500 flex items-center gap-1">
+                    <CheckCircleOutlined /> 已配置
+                  </span>
+                ) : (
+                  <span className="text-xs text-gray-400">可选</span>
+                )}
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm">联网搜索</span>
+                  <span className="text-xs text-gray-400">Brave / SerpAPI / Bing</span>
+                </div>
+                {apiStatus.search ? (
+                  <span className="text-xs text-green-500 flex items-center gap-1">
+                    <CheckCircleOutlined /> 已配置
+                  </span>
+                ) : (
+                  <span className="text-xs text-gray-400">可选（有免费备用）</span>
+                )}
+              </div>
+              {!apiStatus.deepseek && (
+                <div className="text-xs text-amber-500 mt-2 p-2 rounded" style={{ background: 'var(--color-accent-soft)' }}>
+                  ⚠️ DeepSeek API 未配置，创作类功能将不可用。请点击「配置 API」按钮填写。
+                </div>
               )}
             </div>
-            <div>
-              <label className="text-sm text-gray-600 dark:text-gray-400 block mb-1">题材</label>
-              <Select
-                className="w-full"
-                value={settings.genre || undefined}
-                onChange={v => updateField('genre', v)}
-                placeholder="选择题材"
-                options={GENRES.map(g => ({ value: g, label: g }))}
-                allowClear
-              />
-            </div>
-            <div>
-              <label className="text-sm text-gray-600 dark:text-gray-400 block mb-1">目标字数</label>
-              <Select
-                className="w-full"
-                value={settings.target_words}
-                onChange={v => updateField('target_words', v)}
-                options={[
-                  { value: 50000, label: '5万字（短篇）' },
-                  { value: 150000, label: '15万字（中篇）' },
-                  { value: 500000, label: '50万字（长篇）' },
-                  { value: 1000000, label: '100万字（超长篇）' },
-                  { value: 1500000, label: '150万字（史诗）' },
-                ]}
-              />
-            </div>
-          </div>
-        </Card>
+          </Card>
+        </div>
 
         <Card className="mb-4" title={
           <div className="flex items-center gap-2">

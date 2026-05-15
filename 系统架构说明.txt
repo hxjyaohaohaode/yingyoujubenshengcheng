@@ -1,0 +1,171 @@
+【页面/接口/数据结构约定】
+
+API统一响应格式：
+成功响应 — 直接返回数据对象（无外层包装）
+失败响应 — FastAPI自动返回HTTP状态码 + {"detail": "错误信息"}
+HTTP状态码：200成功 / 404未找到 / 422校验失败 / 500服务器错误
+
+API路由前缀约定：
+所有API端点统一使用 /api 前缀
+资源CRUD：/api/projects, /api/characters, /api/scenes 等
+AI能力：/api/ai/* 如 /api/ai/world-gen, /api/ai/foreshadow-wow-gen
+流水线：/api/pipeline/* 如 /api/pipeline/status, /api/pipeline/advance
+配置：/api/config/* 如 /api/config/llm, /api/config/models
+模板：/api/templates/* 如 /api/templates/{name}
+WebSocket：/ws 无前缀，直接路由
+
+RESTful接口约定：
+GET /api/resources — 列表（支持查询参数过滤）
+GET /api/resources/{id} — 获取单个
+POST /api/resources — 创建
+PUT /api/resources/{id} — 更新
+DELETE /api/resources/{id} — 删除
+POST /api/resources/{id}/action — 执行特定动作
+
+前端页面路由约定：
+/ — Dashboard（项目仪表盘）
+/projects/:id/characters — 角色管理
+/projects/:id/foreshadows — 伏笔管理
+/projects/:id/scenes — 场景编辑器
+/projects/:id/chapters — 章节大纲
+/projects/:id/emotion — 情感曲线
+/projects/:id/pipeline — 流水线控制
+/projects/:id/viz — 剧本可视化
+/projects/:id/preview — 剧本预览
+/projects/:id/review — 审稿面板
+/projects/:id/export — 导出
+/projects/:id/world — 世界观设定
+/settings — 系统设置
+
+统一数据类型约定：
+所有ID字段 — string（UUID v4格式）
+所有时间字段 — ISO 8601字符串（如 "2026-05-15T10:30:00Z"）
+状态字段 — string（使用预定义的枚举值：draft/active/completed/failed等）
+枚举/标签字段 — string数组，如 ["伏笔", "情感", "冲突"]
+空值 — 统一用 null，禁止用空字符串 "" 或 0 表示空
+布尔值 — boolean类型，禁止用 0/1 或 "true"/"false"
+JSON字段 — 数据库存TEXT字符串，API层解析为对象返回
+
+前端API调用约定：
+所有API调用通过 frontend/src/api/client.ts 的 api 对象发出
+api.get<T>(url, signal?) — GET请求
+api.post<T>(url, data?, signal?) — POST请求
+api.put<T>(url, data?, signal?) — PUT请求
+api.delete<T>(url, signal?) — DELETE请求
+所有类型定义在同一文件的底部，使用 interface 声明
+API基础地址：开发环境走Vite代理（/api），生产环境直连后端URL
+
+数据库字段命名约定：
+统一使用 snake_case（如 chapter_id, is_wow_moment, created_at）
+外键命名：{关联表}_id（如 project_id, chapter_id）
+时间戳：created_at / updated_at
+布尔值：is_前缀（如 is_hidden, is_wow_moment, human_reviewed）
+JSON/TEXT字段：存储JSON字符串，字段名不加后缀
+
+Agent-任务约定：
+任务提交 — POST /api/ai/* 端点，返回 {"task_id": "..."}
+进度轮询 — GET /api/ai/tasks/{task_id}，返回进度百分比和状态
+流式输出 — 使用Server-Sent Events（SSE）返回流式数据
+WebSocket推送 — 任务进度同时推送到前端WS连接
+取消任务 — POST /api/ai/cancel/{task_id}
+
+Celery任务约定：
+所有耗时操作（AI生成/审计/批量处理）必须走Celery
+任务文件放在 backend/tasks/ 目录下
+每个任务函数使用 @shared_task 装饰器
+任务返回格式：{"status": "ok/fail", "result": {...}, "error": "错误信息"}
+定时任务放在 maintenance.py 中，由Celery Beat调度
+
+【每个模块负责什么】
+
+api/ — 请求路由+参数校验+响应格式化。一句话概括：门面——只管收发，不管逻辑
+models/ — ORM模型+表结构定义。一句话概括：数据形状——数据库长什么样
+schemas/ — Pydantic请求/响应模型。一句话概括：数据契约——API输入输出长什么样
+core/agent/ — 7个Agent的业务逻辑。一句话概括：大脑——创作/审计/伏笔/创意的智能核心
+core/gateway/ — LLM统一调用+路由+限流+计费。一句话概括：嘴——和AI大模型说话的唯一通道
+core/pipeline/ — 流水线状态机+执行器。一句话概括：调度中心——Phase 0-6的流程控制
+core/context/ — 上下文组装+意图分析。一句话概括：记忆——决定给LLM什么背景信息
+core/search/ — 网络搜索+缓存。一句话概括：眼睛——从互联网获取知识
+core/rag/ — 向量嵌入+语义检索。一句话概括：索引——从已有内容中找相关片段
+core/upload/ — 文件上传处理。一句话概括：入口——接收用户上传的参考文件
+core/script_generator/ — 剧本生成引擎+配置推荐。一句话概括：引擎——根据参数推荐最佳配置
+checkers/ — 12个程序化质量检测器。一句话概括：尺子——不调LLM就能做的质量检查
+services/ — Prompt模板+任务调度+运行时。一句话概括：粘合剂——串联各模块的业务服务
+tasks/ — Celery异步任务。一句话概括：后台工人——耗时的AI生成/审计任务
+middleware/ — 限流+审计日志。一句话概括：保安——请求级别的横切关注点
+websocket/ — WS连接管理+路由。一句话概括：广播——实时推送任务进度
+templates/ — 编排模板YAML。一句话概括：剧本的剧本——定义流水线的阶段和步骤
+
+【不能乱改的文件】
+
+🔴绝对不能改（改了全系统崩溃）：
+backend/config.py — 所有环境变量的唯一来源，改错会导致数据库连不上、API Key失效
+backend/database.py — 数据库引擎和会话工厂，改错所有数据操作全部失败
+backend/main.py — FastAPI入口，路由注册+中间件顺序+生命周期，改错服务无法启动
+frontend/src/api/client.ts — API调用基础层，改错所有前端请求全部失败
+render.yaml — Render部署蓝图，改错部署失败
+docker-compose.yml — Docker编排，改错容器无法启动
+
+🟡谨慎修改（改了需要同步多处）：
+backend/models/*.py — 改字段必须同步：迁移SQL + schemas + 前端类型定义
+backend/schemas/*.py — 改字段必须同步：API路由 + 前端类型定义
+backend/core/gateway/client.py — LLM调用核心，改错所有AI功能失效
+backend/core/agent/base.py — Agent基类，所有Agent继承它
+backend/core/agent/registry.py — Agent注册中心，改错Agent无法被发现
+backend/services/llm_prompts.py — 所有Prompt模板，改错AI输出质量下降
+frontend/src/stores/projectStore.ts — 项目状态核心，改错全局状态混乱
+backend/websocket/manager.py — WS连接管理，改错实时推送失效
+
+🟢可以放心改的：
+backend/api/*.py — API路由，只要不改接口签名就行
+frontend/src/pages/*.tsx — 页面组件，独立性强
+frontend/src/components/*.tsx — UI组件，独立性强
+backend/checkers/*.py — 质量检测器，互相独立
+backend/tasks/*.py — Celery任务，互相独立
+backend/templates/*.yaml — 编排模板，独立配置
+
+【新功能应该加在哪里】
+
+📡新的API接口：
+1. backend/api/ 新建或修改路由文件
+2. backend/schemas/ 如有新数据结构，添加Pydantic模型
+3. backend/models/ 如有新表，添加ORM模型
+4. backend/migrations/ 添加迁移SQL
+5. frontend/src/api/client.ts 添加前端API调用
+6. frontend/src/pages/ 添加页面
+
+🤖新的Agent能力：
+1. backend/core/agent/ 新建Agent文件，继承base.py
+2. backend/core/agent/registry.py 注册Agent
+3. backend/core/agent/skill.py 定义技能
+4. backend/core/agent/prompts.py 添加Prompt
+5. backend/services/llm_prompts.py 添加Prompt模板
+6. backend/api/ai.py 暴露API端点
+
+🔍新的质量检测：
+1. backend/checkers/ 新建检测器文件
+2. 在 scene_audit.py 或 full_audit.py 中调用
+
+📊新的页面/视图：
+1. frontend/src/pages/ 新建页面
+2. frontend/src/components/ 新建组件
+3. frontend/src/App.tsx 添加路由
+4. frontend/src/components/Layout.tsx 添加导航
+
+🔄新的流水线阶段：
+1. backend/core/pipeline/template.py 修改模板定义
+2. backend/templates/*.yaml 更新YAML模板
+3. backend/core/pipeline/state_machine.py 更新状态机
+
+🔌新的外部服务集成：
+1. backend/core/ 新建模块目录
+2. backend/config.py 添加环境变量
+3. .env.example 添加配置说明
+4. render.yaml 添加环境变量声明
+
+【核心原则】
+API层只管收发 — api/ 里的代码不应该有业务逻辑，只做参数校验和调用Service
+逻辑在core/ — 所有智能逻辑都在 core/ 下，API层只是入口
+数据模型三件套 — 新增数据必须同步：models/（ORM）+ schemas/（Pydantic）+ 前端类型定义
+LLM调用走网关 — 禁止绕过 core/gateway/client.py 直接调OpenAI SDK
+耗时任务走Celery — 超过2秒的操作必须放到 tasks/ 里异步执行
