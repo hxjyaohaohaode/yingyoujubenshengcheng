@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react'
-import { Modal, Card, Button, Input, App, Collapse, Badge } from 'antd'
+import { Modal, Card, Button, Input, App, Badge, Alert } from 'antd'
 import {
   KeyOutlined, ApiOutlined, CheckCircleOutlined,
-  SearchOutlined, GlobalOutlined,
+  SearchOutlined, GlobalOutlined, ReloadOutlined,
 } from '@ant-design/icons'
-import { api } from '../api/client'
+import { api, API_BASE } from '../api/client'
 
 interface LLMConfig {
   deepseek_base_url: string
@@ -43,6 +43,8 @@ export default function LLMConfigModal({ open, onClose }: LLMConfigModalProps) {
   })
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [backendOffline, setBackendOffline] = useState(false)
+  const [waking, setWaking] = useState(false)
 
   useEffect(() => {
     if (open) {
@@ -50,8 +52,27 @@ export default function LLMConfigModal({ open, onClose }: LLMConfigModalProps) {
     }
   }, [open])
 
+  const wakeBackend = async () => {
+    setWaking(true)
+    setBackendOffline(false)
+    const baseUrl = API_BASE.replace(/\/api$/, '')
+    for (let i = 0; i < 6; i++) {
+      try {
+        await fetch(`${baseUrl}/api/health`, { method: 'GET', signal: AbortSignal.timeout(10000) })
+        setWaking(false)
+        await fetchConfig()
+        return
+      } catch {
+        await new Promise(r => setTimeout(r, 5000))
+      }
+    }
+    setWaking(false)
+    setBackendOffline(true)
+  }
+
   const fetchConfig = async () => {
     setLoading(true)
+    setBackendOffline(false)
     try {
       const data = await api.get<{
         deepseek_base_url: string
@@ -74,9 +95,10 @@ export default function LLMConfigModal({ open, onClose }: LLMConfigModalProps) {
       setConfig(newConfig)
       setOriginalConfig({ ...newConfig })
     } catch (e: any) {
+      setBackendOffline(true)
       notification.error({
-        message: '获取配置失败',
-        description: e?.detail || e?.message || '请检查网络连接',
+        message: '无法连接后端',
+        description: '后端服务可能正在唤醒中，请点击「唤醒后端」按钮重试',
         placement: 'topRight',
       })
     }
@@ -154,9 +176,41 @@ export default function LLMConfigModal({ open, onClose }: LLMConfigModalProps) {
       destroyOnHidden
     >
       <div style={{ marginTop: 8 }}>
-        <p className="text-muted text-sm" style={{ marginBottom: 16 }}>
-          配置大模型和联网搜索的 API 接入信息，修改后即时生效。至少配置一个 LLM 提供商才能使用创作功能。
-        </p>
+        {backendOffline && (
+          <Alert
+            type="warning"
+            showIcon
+            message="后端服务未连接"
+            description={
+              <div>
+                <p style={{ margin: '4px 0' }}>后端服务可能正在休眠（Render 免费版会自动休眠），或尚未启动完成。</p>
+                <Button
+                  type="primary"
+                  size="small"
+                  icon={<ReloadOutlined />}
+                  loading={waking}
+                  onClick={wakeBackend}
+                >
+                  {waking ? '正在唤醒后端（约需30秒）...' : '唤醒后端'}
+                </Button>
+              </div>
+            }
+            style={{ marginBottom: 16 }}
+          />
+        )}
+        {waking && (
+          <Alert
+            type="info"
+            showIcon
+            message="正在唤醒后端服务..."
+            description="Render 免费版的后端在无活动15分钟后会自动休眠，首次唤醒约需30秒，请耐心等待。"
+            style={{ marginBottom: 16 }}
+          />
+        )}
+        {!backendOffline && !waking && (
+          <p className="text-muted text-sm" style={{ marginBottom: 16 }}>
+            配置大模型和联网搜索的 API 接入信息，修改后即时生效。至少配置一个 LLM 提供商才能使用创作功能。
+          </p>
 
         <Card
           className="mb-4"
@@ -352,6 +406,7 @@ export default function LLMConfigModal({ open, onClose }: LLMConfigModalProps) {
             </div>
           </div>
         </Card>
+        )}
       </div>
     </Modal>
   )

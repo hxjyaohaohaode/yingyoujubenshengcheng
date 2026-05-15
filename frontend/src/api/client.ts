@@ -39,29 +39,46 @@ async function request<T>(url: string, options?: RequestInit & { signal?: AbortS
   if (hasBody) {
     headers['Content-Type'] = 'application/json'
   }
-  let res: Response
-  try {
-    res = await fetch(`${API_BASE}${url}`, {
-      headers: { ...headers, ...rest?.headers as Record<string, string> },
-      ...rest,
-      signal,
-    })
-  } catch (e: any) {
-    if (e?.name === 'AbortError' || signal?.aborted) {
-      const abortErr = new ApiError(0, 'Request aborted', true)
-      abortErr.name = 'AbortError'
-      abortErr.silent = true
-      throw abortErr
+
+  const maxRetries = 2
+  let lastError: Error | null = null
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    let res: Response
+    try {
+      res = await fetch(`${API_BASE}${url}`, {
+        headers: { ...headers, ...rest?.headers as Record<string, string> },
+        ...rest,
+        signal,
+      })
+    } catch (e: any) {
+      if (e?.name === 'AbortError' || signal?.aborted) {
+        const abortErr = new ApiError(0, 'Request aborted', true)
+        abortErr.name = 'AbortError'
+        abortErr.silent = true
+        throw abortErr
+      }
+      lastError = e
+      if (attempt < maxRetries) {
+        await new Promise(r => setTimeout(r, 2000 * (attempt + 1)))
+        continue
+      }
+      throw new ApiError(
+        0,
+        '无法连接到后端服务。如果部署在 Render 上，后端可能正在唤醒中（约需30秒），请稍后重试。',
+      )
     }
-    throw new ApiError(0, e?.message || '网络请求失败')
+
+    if (!res.ok) {
+      if (res.status === 0) throw new ApiError(0, '请求已取消')
+      const errorBody = await res.json().catch(() => ({ detail: '请求失败' }))
+      throw new ApiError(res.status, extractErrorMessage(errorBody))
+    }
+    if (res.status === 204) return undefined as T
+    return res.json()
   }
-  if (!res.ok) {
-    if (res.status === 0) throw new ApiError(0, '请求已取消')
-    const errorBody = await res.json().catch(() => ({ detail: '请求失败' }))
-    throw new ApiError(res.status, extractErrorMessage(errorBody))
-  }
-  if (res.status === 204) return undefined as T
-  return res.json()
+
+  throw new ApiError(0, lastError?.message || '网络请求失败')
 }
 
 export const api = {
