@@ -33,7 +33,7 @@ function extractErrorMessage(error: unknown): string {
 }
 
 async function request<T>(url: string, options?: RequestInit & { signal?: AbortSignal }): Promise<T> {
-  const { signal, ...rest } = options || {}
+  const { signal: callerSignal, ...rest } = options || {}
   const hasBody = rest?.body !== undefined && rest?.body !== null
   const headers: Record<string, string> = {}
   if (hasBody) {
@@ -45,15 +45,27 @@ async function request<T>(url: string, options?: RequestInit & { signal?: AbortS
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     let res: Response
+    const timeoutMs = (attempt === 0 && !callerSignal) ? 30000 : 45000
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+
+    if (callerSignal) {
+      callerSignal.addEventListener('abort', () => controller.abort(), { once: true })
+    }
+
     try {
       res = await fetch(`${API_BASE}${url}`, {
         headers: { ...headers, ...rest?.headers as Record<string, string> },
         ...rest,
-        signal,
+        signal: controller.signal,
       })
     } catch (e: any) {
-      if (e?.name === 'AbortError' || signal?.aborted) {
-        const abortErr = new ApiError(0, 'Request aborted', true)
+      clearTimeout(timeoutId)
+      if (e?.name === 'AbortError' || callerSignal?.aborted) {
+        const errMsg = controller.signal.aborted && !callerSignal?.aborted
+          ? '请求超时，后端服务可能正在唤醒中（Render免费版休眠唤醒约需30秒）'
+          : '请求已取消'
+        const abortErr = new ApiError(0, errMsg, true)
         abortErr.name = 'AbortError'
         abortErr.silent = true
         throw abortErr
@@ -68,6 +80,7 @@ async function request<T>(url: string, options?: RequestInit & { signal?: AbortS
         '无法连接到后端服务。如果部署在 Render 上，后端可能正在唤醒中（约需30秒），请稍后重试。',
       )
     }
+    clearTimeout(timeoutId)
 
     if (!res.ok) {
       if (res.status === 0) throw new ApiError(0, '请求已取消')

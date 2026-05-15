@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback, useState } from 'react'
 import { App } from 'antd'
 import { useProjectStore } from '../stores/projectStore'
 import { useAgentStore } from '../stores/agentStore'
+import { API_BASE } from '../api/client'
 
 interface UseWebSocketOptions {
   onMessage?: (data: any) => void
@@ -21,6 +22,8 @@ export function useWebSocket(path: string, options: UseWebSocketOptions = {}) {
   const [connected, setConnected] = useState(false)
   const [reconnecting, setReconnecting] = useState(false)
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastNotifyTimeRef = useRef(0)
+  const NOTIFY_THROTTLE_MS = 30000
   const onMessageRef = useRef(options.onMessage)
   onMessageRef.current = options.onMessage
   const updateAgentRef = useRef(updateAgent)
@@ -60,8 +63,9 @@ export function useWebSocket(path: string, options: UseWebSocketOptions = {}) {
     if (!currentProject?.id || !mountedRef.current) return
 
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
-    const host = window.location.host
-    const wsUrl = `${protocol}://${host}/ws/${currentProject.id}`
+    const isDev = window.location.hostname === 'localhost'
+    const wsHost = isDev ? 'localhost:8000' : 'yingyoujubenshengcheng.onrender.com'
+    const wsUrl = `${protocol}://${wsHost}/ws/${currentProject.id}`
 
     try {
       const ws = new WebSocket(wsUrl)
@@ -141,12 +145,17 @@ export function useWebSocket(path: string, options: UseWebSocketOptions = {}) {
 
         const delay = getReconnectDelay(reconnectCountRef.current)
         setReconnecting(true)
-        notificationRef.current.warning({
-          message: '连接断开',
-          description: `将在 ${Math.round(delay / 1000)} 秒后自动重连（第 ${reconnectCountRef.current} 次）`,
-          placement: 'topRight',
-          duration: 4,
-        })
+
+        const now = Date.now()
+        if (now - lastNotifyTimeRef.current > NOTIFY_THROTTLE_MS) {
+          lastNotifyTimeRef.current = now
+          notificationRef.current.warning({
+            message: '连接断开',
+            description: `正在自动重连...（如果部署在 Render 上，后端休眠唤醒约需30秒）`,
+            placement: 'topRight',
+            duration: 4,
+          })
+        }
 
         reconnectTimeoutRef.current = setTimeout(connect, delay)
       }
