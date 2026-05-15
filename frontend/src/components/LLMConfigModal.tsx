@@ -208,6 +208,7 @@ export default function LLMConfigModal({ open, onClose }: LLMConfigModalProps) {
           />
         )}
         {!backendOffline && !waking && (
+          <>
           <p className="text-muted text-sm" style={{ marginBottom: 16 }}>
             配置大模型和联网搜索的 API 接入信息，修改后即时生效。至少配置一个 LLM 提供商才能使用创作功能。
           </p>
@@ -406,6 +407,7 @@ export default function LLMConfigModal({ open, onClose }: LLMConfigModalProps) {
             </div>
           </div>
         </Card>
+          </>
         )}
       </div>
     </Modal>
