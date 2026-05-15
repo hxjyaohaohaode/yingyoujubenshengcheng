@@ -141,6 +141,8 @@ async def _run_pipeline(project_id: str, scene_id: str, chapter_id: str,
         ctx_mgr = ContextManager(db, gateway, rag, search_svc)
 
         knowledge_text = ""
+        project_brief = ""
+        core_contradiction = ""
         try:
             project_brief = requirements.get("project_brief", "")
             genre = requirements.get("genre", "")

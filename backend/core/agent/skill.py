@@ -7,7 +7,8 @@ Skill 基类: Agent 内部的最小能力单元。
 
 import re
 import logging
-from typing import Callable, Optional, Set
+from collections.abc import Callable
+from typing import Optional, Set
 from core.gateway.client import ModelGateway
 
 logger = logging.getLogger(__name__)

@@ -11,7 +11,8 @@ Skills:
 """
 
 import json
-from typing import Any, Callable, TypedDict
+from typing import Any, TypedDict
+from collections.abc import Callable
 
 from core.agent.base import BaseAgent, AgentTask, AgentResult, layer0_value
 from core.agent.skill import Skill

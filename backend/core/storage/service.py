@@ -5,6 +5,7 @@ Agent 不直接操作数据库，全部通过 StorageService。
 
 import json
 import uuid
+from datetime import datetime, UTC
 from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -107,7 +108,7 @@ class StorageService:
                 "desc": point.get("event_description", point.get("eventDescription", "")),
                 "conflict": point.get("conflict_level", point.get("conflictLevel", 5)),
                 "sc": point.get("scene_count", point.get("sceneCount", 1)),
-                "ts": point.get("timestamp", datetime.now().isoformat()),
+                "ts": point.get("timestamp", datetime.now(UTC).isoformat()),
             },
         )
         await self.db.commit()

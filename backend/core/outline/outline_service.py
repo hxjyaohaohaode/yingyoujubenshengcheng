@@ -17,6 +17,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
 
 from core.gateway.client import get_gateway
+from config import DATABASE_URL
+
+_IS_SQLITE = DATABASE_URL.startswith("sqlite")
+
+def _now_expr() -> str:
+    return "datetime('now')" if _IS_SQLITE else "NOW()"
 
 logger = logging.getLogger(__name__)
 
@@ -303,11 +309,11 @@ async def save_outline_graph(
 
     try:
         await db.execute(
-            text("""
+            text(f"""
                 INSERT INTO project_outline_graphs (project_id, nodes_json, edges_json, updated_at)
-                VALUES (:pid, :nodes, :edges, datetime('now'))
+                VALUES (:pid, :nodes, :edges, {_now_expr()})
                 ON CONFLICT (project_id) DO UPDATE SET
-                    nodes_json = :nodes, edges_json = :edges, updated_at = datetime('now')
+                    nodes_json = :nodes, edges_json = :edges, updated_at = {_now_expr()}
             """),
             {"pid": project_id, "nodes": nodes_json, "edges": edges_json},
         )
@@ -327,11 +333,11 @@ async def save_outline_graph(
             )
             await db.commit()
             await db.execute(
-                text("""
+                text(f"""
                     INSERT INTO project_outline_graphs (project_id, nodes_json, edges_json, updated_at)
-                    VALUES (:pid, :nodes, :edges, datetime('now'))
+                    VALUES (:pid, :nodes, :edges, {_now_expr()})
                     ON CONFLICT (project_id) DO UPDATE SET
-                        nodes_json = :nodes, edges_json = :edges, updated_at = datetime('now')
+                        nodes_json = :nodes, edges_json = :edges, updated_at = {_now_expr()}
                 """),
                 {"pid": project_id, "nodes": nodes_json, "edges": edges_json},
             )
@@ -386,6 +392,9 @@ async def load_outline_graph(
         ]
 
         return OutlineGraph(nodes=nodes, edges=edges)
+    except Exception as e:
+        logger.error("加载大纲架构图失败: %s", e)
+        return OutlineGraph()
 
 
 async def parse_document_to_outline(

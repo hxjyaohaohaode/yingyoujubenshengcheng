@@ -6,7 +6,7 @@
 
 from dataclasses import dataclass
 import re
-from typing import Dict, Optional, Tuple
+from typing import Optional
 
 
 @dataclass
@@ -77,7 +77,7 @@ class ConfigRecommender:
     }
 
     @classmethod
-    def get_scale_tier(cls, word_count_wan: float) -> Tuple[str, str]:
+    def get_scale_tier(cls, word_count_wan: float) -> tuple[str, str]:
         """获取字数规模分级"""
         for min_w, max_w, cn_name, en_name in cls.SCALE_TIERS:
             if min_w <= word_count_wan < max_w:
@@ -391,7 +391,7 @@ class ConfigRecommender:
                            max_words_per_chapter: int,
                            target_ending_count: int,
                            max_branch_depth: int,
-                           **kwargs) -> Tuple[bool, str, Optional[Dict]]:
+                           **kwargs) -> tuple[bool, str, dict | None]:
         """
         验证用户自定义参数是否合理，并给出调整建议
 

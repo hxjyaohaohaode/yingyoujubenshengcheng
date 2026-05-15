@@ -6,7 +6,6 @@
 """
 import re
 from dataclasses import dataclass
-from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from core.narrative.models import WordBudget
@@ -18,7 +17,7 @@ class BudgetAllocation:
     chapter_name: str
     target_words: int
     actual_words: int = 0
-    scene_budgets: list[dict] = None
+    scene_budgets: list[dict] | None = None
 
     def __post_init__(self):
         if self.scene_budgets is None:
@@ -30,7 +29,7 @@ def count_chinese_words(text: str) -> int:
     return len(chinese_chars)
 
 
-def allocate_chapter_budget(total_words: int, chapter_count: int, chapter_weights: Optional[list[float]] = None) -> list[int]:
+def allocate_chapter_budget(total_words: int, chapter_count: int, chapter_weights: list[float] | None = None) -> list[int]:
     if chapter_weights:
         total_weight = sum(chapter_weights)
         return [int(total_words * w / total_weight) for w in chapter_weights]
@@ -58,7 +57,7 @@ def get_compression_instruction(actual_words: int, target_words: int) -> str:
         return f"当前字数{actual_words}字不足目标{target}字。请丰富场景描述、角色心理刻画和环境细节，扩展至约{target}字，但不要添加新情节。"
 
 
-async def save_budget(db: AsyncSession, project_id: str, chapter_id: str, scene_id: Optional[str],
+async def save_budget(db: AsyncSession, project_id: str, chapter_id: str, scene_id: str | None,
                       target_words: int, tolerance_pct: float = 20.0) -> WordBudget:
     budget = WordBudget(
         project_id=project_id,
@@ -72,7 +71,7 @@ async def save_budget(db: AsyncSession, project_id: str, chapter_id: str, scene_
     return budget
 
 
-async def update_actual_words(db: AsyncSession, scene_id: str, actual_words: int):
+async def update_actual_words(db: AsyncSession, scene_id: str, actual_words: int) -> None:
     result = await db.execute(select(WordBudget).where(WordBudget.scene_id == scene_id))
     budget = result.scalar_one_or_none()
     if budget:

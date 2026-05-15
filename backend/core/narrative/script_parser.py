@@ -20,7 +20,7 @@ class ParsedScript:
     total_words: int = 0
 
 
-def detect_chapter_boundaries(text: str) -> list[tuple[int, int, str]]:
+def detect_chapter_boundaries(text: str) -> list[tuple[int, str]]:
     patterns = [
         r'(?:第[一二三四五六七八九十百千\d]+章[^\n]*)',
         r'(?:CHAPTER\s+\d+[^\n]*)',
@@ -78,7 +78,7 @@ def parse_script_content(text: str, filename: str = "") -> ParsedScript:
     return result
 
 
-async def build_narrative_memory_from_script(db: AsyncSession, project_id: str, parsed: ParsedScript):
+async def build_narrative_memory_from_script(db: AsyncSession, project_id: str, parsed: ParsedScript) -> dict:
     from core.narrative.memory_store import store_short_term_memory, store_long_term_memory
 
     for char in parsed.characters:

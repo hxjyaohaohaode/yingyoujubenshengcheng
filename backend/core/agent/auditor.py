@@ -9,7 +9,7 @@ Phase C: 创意评分（含伏笔/wow的场景）
 import json
 import logging
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Optional
 from collections import defaultdict, deque
 
 from core.agent.base import BaseAgent, AgentTask, AgentResult
