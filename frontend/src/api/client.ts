@@ -33,65 +33,35 @@ function extractErrorMessage(error: unknown): string {
 }
 
 async function request<T>(url: string, options?: RequestInit & { signal?: AbortSignal }): Promise<T> {
-  const { signal: callerSignal, ...rest } = options || {}
+  const { signal, ...rest } = options || {}
   const hasBody = rest?.body !== undefined && rest?.body !== null
   const headers: Record<string, string> = {}
   if (hasBody) {
     headers['Content-Type'] = 'application/json'
   }
-
-  const maxRetries = 2
-  let lastError: Error | null = null
-
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    let res: Response
-    const timeoutMs = (attempt === 0 && !callerSignal) ? 30000 : 45000
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
-
-    if (callerSignal) {
-      callerSignal.addEventListener('abort', () => controller.abort(), { once: true })
+  let res: Response
+  try {
+    res = await fetch(`${API_BASE}${url}`, {
+      headers: { ...headers, ...rest?.headers as Record<string, string> },
+      ...rest,
+      signal,
+    })
+  } catch (e: any) {
+    if (e?.name === 'AbortError' || signal?.aborted) {
+      const abortErr = new ApiError(0, 'Request aborted', true)
+      abortErr.name = 'AbortError'
+      abortErr.silent = true
+      throw abortErr
     }
-
-    try {
-      res = await fetch(`${API_BASE}${url}`, {
-        headers: { ...headers, ...rest?.headers as Record<string, string> },
-        ...rest,
-        signal: controller.signal,
-      })
-    } catch (e: any) {
-      clearTimeout(timeoutId)
-      if (e?.name === 'AbortError' || callerSignal?.aborted) {
-        const errMsg = controller.signal.aborted && !callerSignal?.aborted
-          ? '请求超时，后端服务可能正在唤醒中（Render免费版休眠唤醒约需30秒）'
-          : '请求已取消'
-        const abortErr = new ApiError(0, errMsg, true)
-        abortErr.name = 'AbortError'
-        abortErr.silent = true
-        throw abortErr
-      }
-      lastError = e
-      if (attempt < maxRetries) {
-        await new Promise(r => setTimeout(r, 2000 * (attempt + 1)))
-        continue
-      }
-      throw new ApiError(
-        0,
-        '无法连接到后端服务。如果部署在 Render 上，后端可能正在唤醒中（约需30秒），请稍后重试。',
-      )
-    }
-    clearTimeout(timeoutId)
-
-    if (!res.ok) {
-      if (res.status === 0) throw new ApiError(0, '请求已取消')
-      const errorBody = await res.json().catch(() => ({ detail: '请求失败' }))
-      throw new ApiError(res.status, extractErrorMessage(errorBody))
-    }
-    if (res.status === 204) return undefined as T
-    return res.json()
+    throw new ApiError(0, e?.message || '网络请求失败')
   }
-
-  throw new ApiError(0, lastError?.message || '网络请求失败')
+  if (!res.ok) {
+    if (res.status === 0) throw new ApiError(0, '请求已取消')
+    const errorBody = await res.json().catch(() => ({ detail: '请求失败' }))
+    throw new ApiError(res.status, extractErrorMessage(errorBody))
+  }
+  if (res.status === 204) return undefined as T
+  return res.json()
 }
 
 export const api = {
@@ -624,83 +594,15 @@ export const pipelineApi = {
     api.get<{ name: string; description: string; phases: Array<{ name: string; human_gate: boolean; steps: Array<{ agent: string; skill: string }> }> }>(`/templates/${encodeURIComponent(name)}`),
 }
 
-// ========== Search API ==========
-
-export interface KnowledgeCard {
-  entity_name: string
-  entity_type: string
-  summary: string
-  key_facts: string[]
-  sources: string[]
-}
-
-export interface SearchResult {
-  status: string
-  intent: Record<string, unknown>
-  knowledge_cards: KnowledgeCard[]
-}
-
 export const searchApi = {
-  search: (projectId: string, query: string, signal?: AbortSignal) =>
-    api.post<SearchResult>(`/projects/${projectId}/search`, { user_query: query }, signal),
-  status: (projectId: string) =>
-    api.get<{ cached_count: number; last_search: string | null }>(`/projects/${projectId}/search/status`),
-  searchStream: (projectId: string, query: string): Promise<ReadableStream<Uint8Array>> => {
-    const streamUrl = `${API_BASE}/projects/${projectId}/search/stream`
-    return fetch(streamUrl, {
+  searchStream: async (projectId: string, query: string) => {
+    const res = await fetch(`${API_BASE}/projects/${projectId}/search/stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_query: query }),
-    }).then(res => {
-      if (!res.ok) throw new Error(`搜索请求失败: HTTP ${res.status}`)
-      if (!res.body) throw new Error('浏览器不支持流式读取')
-      return res.body
+      body: JSON.stringify({ query }),
     })
+    return res.body as ReadableStream<Uint8Array>
   },
   searchQuick: (projectId: string, query: string) =>
-    api.post<{ status: string; query: string; summary: string; sources: { title: string; url: string; snippet: string; source: string }[]; message?: string }>(
-      `/projects/${projectId}/search/quick`, { user_query: query }
-    ),
-}
-
-// ========== Upload API ==========
-
-export interface UploadFileResult {
-  status: string
-  file_id: string
-  filename: string
-  file_type: string
-  size: number
-  pages: number
-  preview: string
-}
-
-export interface UploadedFile {
-  id: string
-  filename: string
-  file_type: string
-  file_size: number
-  page_count: number
-  text_preview: string
-  created_at: string
-}
-
-export const uploadApi = {
-  upload: async (projectId: string, file: File): Promise<UploadFileResult> => {
-    const formData = new FormData()
-    formData.append('file', file)
-    const res = await fetch(`${API_BASE}/projects/${projectId}/upload`, {
-      method: 'POST',
-      body: formData,
-    })
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ detail: '上传失败' }))
-      throw new ApiError(res.status, err.detail || '上传失败')
-    }
-    return res.json()
-  },
-  list: (projectId: string) =>
-    api.get<{ files: UploadedFile[] }>(`/projects/${projectId}/uploads`),
-  delete: (projectId: string, fileId: string) =>
-    api.delete<{ status: string }>(`/projects/${projectId}/uploads/${fileId}`),
+    api.post<{ status: string; message?: string; summary: string; sources: Array<{ title: string; url: string; snippet: string; source: string }> }>(`/projects/${projectId}/search/quick`, { query }),
 }

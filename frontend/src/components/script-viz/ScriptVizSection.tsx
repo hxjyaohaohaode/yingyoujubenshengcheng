@@ -1,11 +1,11 @@
-import { useMemo, useCallback, useState, useRef, useEffect, useDeferredValue, memo } from 'react'
+import { useMemo, useCallback, useState, useRef, useEffect } from 'react'
 import {
   ReactFlow, ReactFlowProvider, Background, Controls, MiniMap, useNodesState, useEdgesState,
   useReactFlow, BackgroundVariant, MarkerType, Node, Edge, Connection,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { Button, Tooltip, Spin } from 'antd'
-import { ApartmentOutlined } from '@ant-design/icons'
+import { Button, Tooltip, Collapse } from 'antd'
+import { ApartmentOutlined, ExpandOutlined } from '@ant-design/icons'
 import { AnalysisData, CharacterData, RelationData, SceneData, SceneLinkData, ForeshadowData, ForeshadowLinkData } from './plugins/types'
 import { getDagreLayout, LayoutDirection } from './utils/layoutEngine'
 import CharacterNode from './CharacterNode'
@@ -46,54 +46,29 @@ interface ScriptVizSectionProps {
   highlightedNodeId?: string | null
 }
 
-const LARGE_DATASET_THRESHOLD = 50
-
-const layoutCache = new Map<string, { nodes: Node[]; edges: Edge[] }>()
-
-function getLayoutCacheKey(data: AnalysisData, sectionType: string): string {
-  let hash = sectionType
-  hash += `|c${data.characters.length}|s${data.scenes.length}|r${data.relations.length}|f${data.foreshadows.length}|l${data.scene_links.length}`
-  return hash
-}
-
 function SectionFlow({ data, sectionType, onNodeClick, onEdgeClick, onPaneClick, onConnect, selectedNodeId, highlightedNodeId }: Omit<ScriptVizSectionProps, 'title' | 'description'>) {
   const reactFlowInstance = useReactFlow()
   const containerRef = useRef<HTMLDivElement>(null)
   const [containerSize, setContainerSize] = useState({ w: 800, h: 400 })
   const [layoutVersion, setLayoutVersion] = useState(0)
-  const [isComputingLayout, setIsComputingLayout] = useState(false)
-  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  const deferredData = useDeferredValue(data)
 
   useEffect(() => {
     if (!containerRef.current) return
     const obs = new ResizeObserver(entries => {
-      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
-      debounceTimerRef.current = setTimeout(() => {
-        const { width, height } = entries[0].contentRect
-        if (width > 0 && height > 0) setContainerSize({ w: width, h: height })
-        debounceTimerRef.current = null
-      }, 200)
+      const { width, height } = entries[0].contentRect
+      if (width > 0 && height > 0) setContainerSize({ w: width, h: height })
     })
     obs.observe(containerRef.current)
-    return () => {
-      obs.disconnect()
-      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
-    }
+    return () => obs.disconnect()
   }, [])
 
-  const currentData = deferredData || data
-  const totalNodeEstimate = currentData.characters.length + currentData.scenes.length + currentData.foreshadows.length
-  const isLargeDataset = totalNodeEstimate > LARGE_DATASET_THRESHOLD
-
   const isEmpty = useMemo(() => {
-    if (sectionType === 'character-graph') return currentData.characters.length === 0
-    if (sectionType === 'timeline') return currentData.scenes.length === 0
-    if (sectionType === 'branch-ending') return currentData.scenes.length === 0
-    if (sectionType === 'foreshadow-net') return currentData.foreshadows.length === 0
+    if (sectionType === 'character-graph') return data.characters.length === 0
+    if (sectionType === 'timeline') return data.scenes.length === 0
+    if (sectionType === 'branch-ending') return data.scenes.length === 0
+    if (sectionType === 'foreshadow-net') return data.foreshadows.length === 0
     return false
-  }, [currentData, sectionType])
+  }, [data, sectionType])
 
   const emptyMessage = useMemo(() => {
     if (sectionType === 'character-graph') return '暂无角色数据。请等待流水线完成角色设计阶段，或手动创建角色。'
@@ -104,31 +79,23 @@ function SectionFlow({ data, sectionType, onNodeClick, onEdgeClick, onPaneClick,
   }, [sectionType])
 
   const { nodes: initialNodes, edges: initialEdges } = useMemo(() => {
-    const cacheKey = getLayoutCacheKey(currentData, sectionType)
-    if (layoutVersion === 0 && layoutCache.has(cacheKey)) {
-      return layoutCache.get(cacheKey)!
-    }
-
-    setIsComputingLayout(true)
-    const startTime = performance.now()
-
     const nodes: Node[] = []
     const edges: Edge[] = []
     const nodeIdSet = new Set<string>()
-    const sequentialLinks = currentData.scene_links.filter(l => l.type === 'sequential')
+    const sequentialLinks = data.scene_links.filter(l => l.type === 'sequential')
 
     if (sectionType === 'character-graph') {
       const charSceneCount = new Map<string, number>()
       const charRelationCount = new Map<string, number>()
-      currentData.scene_links.filter(l => l.type === 'appears_in').forEach(l => {
+      data.scene_links.filter(l => l.type === 'appears_in').forEach(l => {
         charSceneCount.set(l.source, (charSceneCount.get(l.source) || 0) + 1)
       })
-      currentData.relations.forEach(r => {
+      data.relations.forEach(r => {
         charRelationCount.set(r.char_a_id, (charRelationCount.get(r.char_a_id) || 0) + 1)
         charRelationCount.set(r.char_b_id, (charRelationCount.get(r.char_b_id) || 0) + 1)
       })
 
-      currentData.characters.forEach((ch: CharacterData) => {
+      data.characters.forEach((ch: CharacterData) => {
         nodeIdSet.add(ch.id)
         nodes.push({
           id: ch.id, type: 'character', position: { x: 0, y: 0 },
@@ -145,7 +112,7 @@ function SectionFlow({ data, sectionType, onNodeClick, onEdgeClick, onPaneClick,
         })
       })
 
-      currentData.relations.forEach((rel: RelationData) => {
+      data.relations.forEach((rel: RelationData) => {
         if (!nodeIdSet.has(rel.char_a_id) || !nodeIdSet.has(rel.char_b_id)) return
         const color = RELATION_COLORS[rel.relation_type] || '#6b7280'
         edges.push({
@@ -167,7 +134,7 @@ function SectionFlow({ data, sectionType, onNodeClick, onEdgeClick, onPaneClick,
     }
 
     if (sectionType === 'timeline') {
-      const sortedScenes = [...currentData.scenes].sort((a, b) =>
+      const sortedScenes = [...data.scenes].sort((a, b) =>
         (a.scene_code || '').localeCompare(b.scene_code || '')
       )
 
@@ -202,7 +169,7 @@ function SectionFlow({ data, sectionType, onNodeClick, onEdgeClick, onPaneClick,
         })
       })
 
-      currentData.events.forEach(ev => {
+      data.events.forEach(ev => {
         if (ev.scene_id && nodeIdSet.has(ev.scene_id)) {
           nodeIdSet.add(ev.id)
           nodes.push({
@@ -228,9 +195,9 @@ function SectionFlow({ data, sectionType, onNodeClick, onEdgeClick, onPaneClick,
     }
 
     if (sectionType === 'branch-ending') {
-      const sceneIndexById = new Map(currentData.scenes.map((scene, index) => [scene.id, index]))
+      const sceneIndexById = new Map(data.scenes.map((scene, index) => [scene.id, index]))
       const choiceBridgeEdgeIds = new Set<string>()
-      currentData.scenes.forEach((sc: SceneData) => {
+      data.scenes.forEach((sc: SceneData) => {
         nodeIdSet.add(sc.id)
         nodes.push({
           id: sc.id, type: 'scene', position: { x: 0, y: 0 },
@@ -272,7 +239,7 @@ function SectionFlow({ data, sectionType, onNodeClick, onEdgeClick, onPaneClick,
       })
 
       const endingSceneIds = new Set<string>()
-      currentData.scenes.forEach(sc => {
+      data.scenes.forEach(sc => {
         const hasOutgoing = (sceneOutgoing.get(sc.id) || []).length > 0
         const sceneIdx = sceneIndexById.get(sc.id) ?? -1
         if (!hasOutgoing && sceneIdx > 0) {
@@ -292,7 +259,7 @@ function SectionFlow({ data, sectionType, onNodeClick, onEdgeClick, onPaneClick,
         }
       })
 
-      currentData.scene_links.filter(l => l.type === 'sequential').forEach((link: SceneLinkData) => {
+      data.scene_links.filter(l => l.type === 'sequential').forEach((link: SceneLinkData) => {
         if (!nodeIdSet.has(link.source) || !nodeIdSet.has(link.target)) return
         const outgoing = sceneOutgoing.get(link.source) || []
         if (outgoing.length > 1) {
@@ -344,7 +311,7 @@ function SectionFlow({ data, sectionType, onNodeClick, onEdgeClick, onPaneClick,
     }
 
     if (sectionType === 'foreshadow-net') {
-      currentData.foreshadows.forEach((fs: ForeshadowData) => {
+      data.foreshadows.forEach((fs: ForeshadowData) => {
         nodeIdSet.add(fs.id)
         nodes.push({
           id: fs.id, type: 'foreshadow', position: { x: 0, y: 0 },
@@ -363,7 +330,7 @@ function SectionFlow({ data, sectionType, onNodeClick, onEdgeClick, onPaneClick,
         })
       })
 
-      currentData.foreshadow_links.forEach((link: ForeshadowLinkData) => {
+      data.foreshadow_links.forEach((link: ForeshadowLinkData) => {
         if (!nodeIdSet.has(link.source) || !nodeIdSet.has(link.target)) return
         const linkType = link.type || 'related'
         const isPlant = linkType === 'planted_in'
@@ -399,18 +366,9 @@ function SectionFlow({ data, sectionType, onNodeClick, onEdgeClick, onPaneClick,
       nodeSep: nodeCount > 15 ? 60 : nodeCount > 8 ? 50 : 40,
     })
 
-    const result = { nodes: layoutedNodes, edges: layoutedEdges }
-    const elapsed = performance.now() - startTime
-    layoutCache.set(cacheKey, result)
-    setIsComputingLayout(false)
-
-    if (elapsed > 100) {
-      console.debug(`[ScriptViz] 布局计算耗时: ${elapsed.toFixed(0)}ms (${nodeCount}个节点, ${edges.length}条边)`)
-    }
-
-    return result
+    return { nodes: layoutedNodes, edges: layoutedEdges }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentData, sectionType, layoutVersion])
+  }, [data, sectionType, layoutVersion])
 
   const [rfNodes, setRfNodes, onNodesChange] = useNodesState(initialNodes)
   const [rfEdges, setRfEdges, onEdgesChange] = useEdgesState(initialEdges)
@@ -430,15 +388,6 @@ function SectionFlow({ data, sectionType, onNodeClick, onEdgeClick, onPaneClick,
             <div style={{ fontSize: 20, marginBottom: 12, fontWeight: 600 }}>暂无内容</div>
             <div style={{ fontSize: 14, color: 'var(--color-muted)', maxWidth: 320, lineHeight: 1.6 }}>
               {emptyMessage}
-            </div>
-          </div>
-        </div>
-      ) : isComputingLayout && isLargeDataset ? (
-        <div className="w-full h-full flex items-center justify-center">
-          <div style={{ textAlign: 'center', padding: 48 }}>
-            <Spin size="large" />
-            <div style={{ fontSize: 14, color: 'var(--color-muted)', marginTop: 16 }}>
-              正在计算布局（{totalNodeEstimate}个节点）...
             </div>
           </div>
         </div>

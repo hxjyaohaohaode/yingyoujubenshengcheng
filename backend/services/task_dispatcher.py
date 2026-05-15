@@ -16,6 +16,12 @@ TASK_DEFINITIONS = {
         "task_name": "场景生成",
         "estimated_time": "预计 8-15 秒",
     },
+    "scene_generation_v2": {
+        "task_path": "tasks.scene_generation_v2.generate_scene_v2_task",
+        "agent_name": "叙事流水线",
+        "task_name": "场景生成v2（连贯性流水线）",
+        "estimated_time": "预计 30-90 秒",
+    },
     "scene_audit": {
         "task_path": "tasks.scene_audit.audit_scene_task",
         "agent_name": "审计Agent",
@@ -38,10 +44,11 @@ TASK_DEFINITIONS = {
 
 
 def _get_task_callable(task_type: str):
-    from tasks import audit_scene_task, foreshadow_design_task, full_audit_task, generate_scene_task
+    from tasks import audit_scene_task, foreshadow_design_task, full_audit_task, generate_scene_task, generate_scene_v2_task
 
     task_map = {
         "scene_generation": generate_scene_task,
+        "scene_generation_v2": generate_scene_v2_task,
         "scene_audit": audit_scene_task,
         "foreshadow_design": foreshadow_design_task,
         "full_audit": full_audit_task,

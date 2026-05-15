@@ -460,6 +460,79 @@ async def dispatch_scene_generate(project_id: uuid.UUID, scene_id: uuid.UUID,
     return TaskProgressResponse(**response)
 
 
+class SceneGenerateV2Request(BaseModel):
+    requirements: str = ""
+    chapter_id: str = ""
+    target_words: int = 0
+
+
+@router.post("/ai/projects/{project_id}/scenes/{scene_id}/generate-v2", response_model=TaskProgressResponse)
+async def dispatch_scene_generate_v2(project_id: uuid.UUID, scene_id: uuid.UUID,
+                                      body: SceneGenerateV2Request | None = None,
+                                      db: AsyncSession = Depends(get_db)):
+    """
+    使用叙事连贯性流水线生成场景（v2）
+    
+    流水线步骤:
+    1. 加载全局叙事记忆（角色状态/活跃伏笔/最近事件/关系/世界观/主题）
+    2. 构建场景规划上下文
+    3. AI生成场景内容
+    4. 5层逻辑检查（角色/时间线/伏笔/世界观/主题一致性）
+    5. 迭代精炼修复（最多3轮）
+    6. 提取关键信息更新叙事记忆
+    """
+    project_config = {}
+    try:
+        from sqlalchemy import text
+        result = await db.execute(
+            text("SELECT config FROM projects WHERE id = :pid"),
+            {"pid": str(project_id)},
+        )
+        row = result.fetchone()
+        if row and row[0]:
+            import json
+            project_config = json.loads(row[0]) if isinstance(row[0], str) else (row[0] or {})
+    except Exception:
+        pass
+
+    target_words = (body.target_words if body and body.target_words else
+                    project_config.get("target_word_count", 3000))
+
+    requirements = {
+        "user_requirements": (body.requirements or "").strip() if body else "",
+        "project_brief": project_config.get("description", ""),
+        "genre": project_config.get("genre", ""),
+        "sub_genre": project_config.get("sub_genre", ""),
+        "core_contradiction": project_config.get("core_contradiction", ""),
+        "theme": project_config.get("theme", ""),
+        "tone": project_config.get("tone", "neutral"),
+        "narrative_pov": project_config.get("narrative_pov", "third_person"),
+        "style": project_config.get("writing_style", ""),
+    }
+
+    chapter_id = body.chapter_id if body else ""
+
+    response = await enqueue_task(
+        db,
+        project_id=str(project_id),
+        task_type="scene_generation_v2",
+        payload={
+            "scene_id": str(scene_id),
+            "chapter_id": chapter_id,
+            "requirements": requirements.get("user_requirements", ""),
+            "target_words": target_words,
+        },
+        task_kwargs={
+            "project_id": str(project_id),
+            "scene_id": str(scene_id),
+            "chapter_id": chapter_id,
+            "requirements": requirements,
+            "target_words": target_words,
+        },
+    )
+    return TaskProgressResponse(**response)
+
+
 @router.post("/ai/projects/{project_id}/scenes/{scene_id}/audit", response_model=TaskProgressResponse)
 async def dispatch_scene_audit(project_id: uuid.UUID, scene_id: uuid.UUID,
                                 db: AsyncSession = Depends(get_db)):

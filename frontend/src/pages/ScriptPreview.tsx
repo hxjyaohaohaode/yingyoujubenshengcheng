@@ -78,6 +78,7 @@ interface PlayState {
   revealedConsequences: Record<string, string>
   pausedAtChoice: boolean
   pausedSceneId: string | null
+  pendingBranchTarget: string | null
 }
 
 const MORAL_COLORS: Record<string, string> = {
@@ -158,6 +159,7 @@ export default function ScriptPreview() {
     revealedConsequences: {},
     pausedAtChoice: false,
     pausedSceneId: null,
+    pendingBranchTarget: null,
   })
 
   const [expandedChoice, setExpandedChoice] = useState<string | null>(null)
@@ -271,6 +273,7 @@ export default function ScriptPreview() {
       revealedConsequences: {},
       pausedAtChoice: firstWithChoice === 0,
       pausedSceneId: firstWithChoice === 0 ? filteredScenes[0].id : null,
+      pendingBranchTarget: null,
     })
     setViewType('continuous')
   }
@@ -283,26 +286,46 @@ export default function ScriptPreview() {
       revealedConsequences: {},
       pausedAtChoice: false,
       pausedSceneId: null,
+      pendingBranchTarget: null,
     })
   }
 
   const handlePlayChoice = (sceneId: string, choiceId: string, choice: ChoiceOption) => {
     const consequence = choice.consequence_direct || choice.consequence || ''
+    const branchTarget = choice.jump_scene || choice.branch_target || null
     setPlayState(prev => ({
       ...prev,
       selectedChoices: { ...prev.selectedChoices, [sceneId]: choiceId },
       revealedConsequences: { ...prev.revealedConsequences, [sceneId]: consequence },
       pausedAtChoice: false,
       pausedSceneId: null,
+      pendingBranchTarget: branchTarget,
     }))
   }
 
   const advancePlay = () => {
     setPlayState(prev => {
-      const nextIndex = prev.currentSceneIndex + 1
+      let nextIndex: number
+
+      if (prev.pendingBranchTarget) {
+        const targetIdx = filteredScenes.findIndex(s => s.id === prev.pendingBranchTarget)
+        if (targetIdx !== -1) {
+          nextIndex = targetIdx
+        } else {
+          const targetByCode = filteredScenes.findIndex(s => s.scene_code === prev.pendingBranchTarget)
+          if (targetByCode !== -1) {
+            nextIndex = targetByCode
+          } else {
+            nextIndex = prev.currentSceneIndex + 1
+          }
+        }
+      } else {
+        nextIndex = prev.currentSceneIndex + 1
+      }
+
       if (nextIndex >= filteredScenes.length) {
         notification.success({ message: '模拟游玩结束！', placement: 'topRight' })
-        return { ...prev, isPlaying: false }
+        return { ...prev, isPlaying: false, pendingBranchTarget: null }
       }
       const nextScene = filteredScenes[nextIndex]
       const hasChoice = safeChoices(nextScene.choices).length > 0
@@ -311,6 +334,7 @@ export default function ScriptPreview() {
         currentSceneIndex: nextIndex,
         pausedAtChoice: hasChoice,
         pausedSceneId: hasChoice ? nextScene.id : null,
+        pendingBranchTarget: null,
       }
     })
   }

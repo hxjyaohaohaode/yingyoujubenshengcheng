@@ -52,4 +52,5 @@ export const DataEvents = {
   AI_AUDIT_COMPLETED: 'ai:audit-completed',
   PIPELINE_ADVANCED: 'pipeline:advanced',
   PIPELINE_STATUS_CHANGED: 'pipeline:status-changed',
+  OUTLINE_UPDATED: 'data:outline-updated',
 } as const

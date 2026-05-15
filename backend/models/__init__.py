@@ -9,6 +9,7 @@ from models.emotion_curve import EmotionCurve
 from models.audit import AuditRecord
 from models.element import Element, InfoPoint
 from models.agent_task import AgentTask
+from core.narrative.models import NarrativeMemory, WordBudget
 
 __all__ = [
     "Project", "ProjectConfig",
@@ -16,4 +17,5 @@ __all__ = [
     "Chapter", "ChapterSection", "ChoiceDesign", "Scene", "SceneVersion",
     "Foreshadow", "ForeshadowRelation",
     "EmotionCurve", "AuditRecord", "Element", "InfoPoint", "AgentTask",
+    "NarrativeMemory", "WordBudget",
 ]

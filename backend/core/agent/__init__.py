@@ -5,6 +5,7 @@ from .auditor import AuditorAgent
 from .state_manager import StateManagerAgent
 from .material import MaterialAgent
 from .foreshadow import ForeshadowAgent
+from .narrative_memory_agent import NarrativeMemoryAgent
 
 __all__ = [
     'CreatorAgent',
@@ -14,4 +15,5 @@ __all__ = [
     'StateManagerAgent',
     'MaterialAgent',
     'ForeshadowAgent',
+    'NarrativeMemoryAgent',
 ]

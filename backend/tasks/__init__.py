@@ -38,6 +38,7 @@ __all__ = [
 def __getattr__(name):
     _lazy_map = {
         "generate_scene_task": ".scene_generation",
+        "generate_scene_v2_task": ".scene_generation_v2",
         "audit_scene_task": ".scene_audit",
         "full_audit_task": ".full_audit",
         "foreshadow_design_task": ".foreshadow_design",

@@ -215,9 +215,7 @@ function ScriptVizInner() {
   const handleNodeClick = useCallback((_event: React.MouseEvent, node: Node) => {
     setSelectedNode(node.id)
     setCardData(buildCardData(node))
-    const x = Math.min(_event.clientX + 16, window.innerWidth - 340)
-    const y = Math.min(_event.clientY + 16, window.innerHeight - 400)
-    setCardPosition({ x: Math.max(0, x), y: Math.max(0, y) })
+    setCardPosition({ x: window.innerWidth * 0.25, y: window.innerHeight * 0.12 })
   }, [buildCardData])
 
   const handleEdgeClick = useCallback((_event: React.MouseEvent, edge: Edge) => {
@@ -391,7 +389,6 @@ function ScriptVizInner() {
           </div>
         ) : (
           <ScriptVizSection
-            key={activeTab}
             data={analysisData}
             sectionType={activeTab as any}
             onNodeClick={handleNodeClick}

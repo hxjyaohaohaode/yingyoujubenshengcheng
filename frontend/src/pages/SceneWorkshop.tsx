@@ -23,6 +23,7 @@ import NarrationRenderer from '../components/NarrationRenderer'
 import ConfirmDialog from '../components/ConfirmDialog'
 import EmotionChart from '../components/EmotionChart'
 import ForeshadowTag from '../components/ForeshadowTag'
+import NarrativeMemoryPanel from '../components/NarrativeMemoryPanel'
 import type { Scene, Chapter, Character } from '../api/client'
 
 const { TextArea } = Input
@@ -212,7 +213,7 @@ function buildScenePatchPayload(scene: SceneData): Record<string, unknown> {
 }
 
 export default function SceneWorkshop() {
-  const { notification } = App.useApp()
+  const { notification, modal } = App.useApp()
   const { currentProject } = useProjectStore()
   const { updateAgent } = useAgentStore()
   const queryClient = useQueryClient()
@@ -225,6 +226,7 @@ export default function SceneWorkshop() {
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [confirmFinalize, setConfirmFinalize] = useState<string | null>(null)
   const [showVersionPanel, setShowVersionPanel] = useState(false)
+  const [showNarrativeMemory, setShowNarrativeMemory] = useState(false)
   const [showRejectModal, setShowRejectModal] = useState(false)
   const [rejectCount, setRejectCount] = useState(0)
 
@@ -537,7 +539,7 @@ export default function SceneWorkshop() {
   const selectScene = useCallback(
     (id: string) => {
       if (hasUnsaved && editScene) {
-        Modal.confirm({
+        modal.confirm({
           title: '未保存的更改',
           content: '当前场景有未保存的修改，确定要切换吗？',
           onOk: () => {
@@ -1713,6 +1715,15 @@ export default function SceneWorkshop() {
                   >
                     版本历史
                   </Button>
+                  <Tooltip title="查看全局叙事记忆、活跃伏笔、角色关系状态">
+                    <Button
+                      icon={<EyeOutlined />}
+                      size="small"
+                      onClick={() => setShowNarrativeMemory(true)}
+                    >
+                      叙事记忆
+                    </Button>
+                  </Tooltip>
                   <Button
                     icon={<SaveOutlined />}
                     size="small"
@@ -1908,6 +1919,15 @@ export default function SceneWorkshop() {
             <Empty description="暂无版本记录" />
           )}
         </div>
+      </Drawer>
+
+      <Drawer
+        open={showNarrativeMemory}
+        onClose={() => setShowNarrativeMemory(false)}
+        title="叙事记忆中枢"
+        width={480}
+      >
+        <NarrativeMemoryPanel projectId={currentProject.id} />
       </Drawer>
     </div>
   )

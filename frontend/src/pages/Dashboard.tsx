@@ -18,6 +18,7 @@ import { useAITaskStore } from '../stores/aiTaskStore'
 import { api } from '../api/client'
 import { eventBus, DataEvents } from '../services/eventBus'
 import EmotionChart from '../components/EmotionChart'
+import WordBudgetPanel from '../components/WordBudgetPanel'
 import ProjectSelector from '../components/ProjectSelector'
 import FileUpload from '../components/FileUpload'
 import KnowledgeSearch from '../components/KnowledgeSearch'
@@ -871,6 +872,17 @@ export default function Dashboard() {
             <Col xs={24} lg={12}>
               <div className="card-surface" style={{ padding: 24 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                  <h3 className="subsection-title" style={{ margin: 0 }}>字数规划</h3>
+                  <span style={{ fontSize: 11, color: 'var(--color-muted)' }}>
+                    设定总字数目标，自动分配到各章节场景
+                  </span>
+                </div>
+                <WordBudgetPanel projectId={currentProject.id} />
+              </div>
+            </Col>
+            <Col xs={24} lg={12}>
+              <div className="card-surface" style={{ padding: 24 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
                   <h3 className="subsection-title" style={{ margin: 0 }}>联网搜索</h3>
                   <span style={{ fontSize: 11, color: 'var(--color-muted)' }}>
                     搜索历史、文化、人物等背景资料，AI生成时将自动参考
@@ -887,7 +899,7 @@ export default function Dashboard() {
                     上传资料后AI将在生成时自动参考这些内容
                   </span>
                 </div>
-                <FileUpload projectId={currentProject.id} compact />
+                <FileUpload projectId={currentProject.id} compact allowScriptImport />
               </div>
             </Col>
           </Row>

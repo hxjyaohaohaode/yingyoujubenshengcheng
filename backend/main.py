@@ -8,13 +8,13 @@ except ImportError:
     aioredis = None
     _REDIS_AVAILABLE = False
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from pydantic import BaseModel
 
 from config import CORS_ORIGINS, APP_ENV, REDIS_URL, DATABASE_URL
-from database import init_db, close_db, async_session_factory, check_db_health
+from database import init_db, close_db, async_session_factory, check_db_health, get_db
 from middleware.rate_limit import RateLimitMiddleware
 from middleware.audit_log import AuditLogger, AuditLoggingMiddleware
 from api import projects, characters, foreshadows, scenes, chapters, ai, export, pipeline, templates, script_viz, upload, search, knowledge
@@ -422,3 +422,249 @@ async def update_llm_config(body: LLMConfigUpdate):
 
     logger.info("LLM config updated: %s", ", ".join(updated))
     return {"status": "ok", "updated": updated}
+
+# ===== 叙事记忆API =====
+@app.get("/api/projects/{project_id}/narrative-memory")
+async def get_narrative_memory(project_id: str, db=Depends(get_db)):
+    from core.narrative.memory_loader import build_narrative_context
+    ctx = await build_narrative_context(db, project_id)
+    return {"project_id": project_id, "narrative_context": ctx}
+
+
+@app.get("/api/projects/{project_id}/narrative-memory/category/{category}")
+async def get_narrative_memory_by_category(project_id: str, category: str, db=Depends(get_db)):
+    from core.narrative.memory_store import get_long_term_memories
+    memories = await get_long_term_memories(db, project_id, category)
+    return {
+        "project_id": project_id,
+        "category": category,
+        "memories": [{"id": str(m.id), "content": m.content, "entity_id": m.entity_id} for m in memories],
+    }
+
+# ===== 全局审查API =====
+@app.post("/api/projects/{project_id}/review/global")
+async def trigger_global_review(project_id: str, db=Depends(get_db)):
+    from core.narrative.revision_orchestrator import run_global_review
+    report = await run_global_review(db, project_id)
+    return {
+        "project_id": project_id,
+        "structure_issues": report.structure_issues,
+        "rhythm_issues": report.rhythm_issues,
+        "unresolved_foreshadows": report.unresolved_foreshadows,
+        "character_arc_issues": report.character_arc_issues,
+        "overall_score": report.overall_score,
+        "summary": report.summary,
+    }
+
+# ===== 单场景精炼API =====
+@app.post("/api/scenes/{scene_id}/refine")
+async def refine_scene(scene_id: str, project_id: str, db=Depends(get_db)):
+    from core.narrative.revision_orchestrator import refine_scene
+    from models.scene import Scene
+    from sqlalchemy import select
+    scene = (await db.execute(select(Scene).where(Scene.id == scene_id))).scalar_one_or_none()
+    if not scene:
+        raise HTTPException(status_code=404, detail="场景不存在")
+    result = await refine_scene(db, project_id, scene_id, scene.narration or "")
+    return {
+        "scene_id": scene_id,
+        "all_passed": result.all_passed,
+        "iterations": result.iterations,
+        "refined_content": result.refined_content,
+        "checks_before": [{"layer": c.layer, "passed": c.passed, "score": c.score, "issues": c.issues} for c in result.checks_before],
+        "checks_after": [{"layer": c.layer, "passed": c.passed, "score": c.score, "issues": c.issues} for c in result.checks_after],
+        "changes_summary": result.changes_summary,
+    }
+
+# ===== 字数规划API =====
+@app.get("/api/projects/{project_id}/word-budget")
+async def get_word_budget(project_id: str, db=Depends(get_db)):
+    from core.narrative.word_budget import get_project_budgets
+    budgets = await get_project_budgets(db, project_id)
+    return {
+        "project_id": project_id,
+        "budgets": [
+            {
+                "id": str(b.id),
+                "target_words": b.target_words,
+                "actual_words": b.actual_words,
+                "chapter_id": str(b.chapter_id) if b.chapter_id else None,
+                "scene_id": str(b.scene_id) if b.scene_id else None,
+            }
+            for b in budgets
+        ],
+    }
+
+
+@app.put("/api/projects/{project_id}/word-budget")
+async def update_word_budget(project_id: str, body: dict, db=Depends(get_db)):
+    from core.narrative.word_budget import save_budget, allocate_chapter_budget, allocate_scene_budget
+    total_words = body.get("total_words", 500000)
+    chapter_count = body.get("chapter_count", 10)
+    chapters = allocate_chapter_budget(total_words, chapter_count, body.get("chapter_weights"))
+    results = []
+    for i, ch_words in enumerate(chapters):
+        scene_count = body.get("scenes_per_chapter", 5)
+        scene_words = allocate_scene_budget(ch_words, scene_count)
+        for j, sw in enumerate(scene_words):
+            budget = await save_budget(db, project_id, f"ch_{i+1}", f"sc_{i+1}_{j+1}", sw)
+            results.append({"chapter_index": i + 1, "scene_index": j + 1, "target_words": sw})
+    return {"project_id": project_id, "total_words": total_words, "allocations": results}
+
+
+# ===== 大纲架构工作台API =====
+@app.get("/api/projects/{project_id}/outline-graph")
+async def get_outline_graph(project_id: str, db=Depends(get_db)):
+    from core.outline.outline_service import load_outline_graph
+    graph = await load_outline_graph(db, project_id)
+    return {
+        "project_id": project_id,
+        "nodes": [
+            {
+                "id": n.id, "node_type": n.node_type, "title": n.title,
+                "summary": n.summary, "position_x": n.position_x, "position_y": n.position_y,
+                "parent_id": n.parent_id, "arc_type": n.arc_type,
+                "emotion_target": n.emotion_target, "word_target": n.word_target,
+                "metadata": n.metadata,
+            }
+            for n in graph.nodes
+        ],
+        "edges": [
+            {
+                "id": e.id, "source_id": e.source_id, "target_id": e.target_id,
+                "edge_type": e.edge_type, "label": e.label, "metadata": e.metadata,
+            }
+            for e in graph.edges
+        ],
+    }
+
+
+@app.post("/api/projects/{project_id}/outline-graph/generate")
+async def generate_outline_graph(project_id: str, body: dict, db=Depends(get_db)):
+    from core.outline.outline_service import ai_generate_outline, save_outline_graph
+    graph = await ai_generate_outline(
+        db=db, project_id=project_id,
+        genre=body.get("genre", ""),
+        theme=body.get("theme", ""),
+        core_contradiction=body.get("core_contradiction", ""),
+        target_chapters=body.get("target_chapters", 10),
+        narrative_structure=body.get("narrative_structure", "three_act"),
+        user_description=body.get("user_description", ""),
+    )
+    save_result = await save_outline_graph(db, project_id, graph)
+    return {
+        "project_id": project_id,
+        "nodes": [
+            {
+                "id": n.id, "node_type": n.node_type, "title": n.title,
+                "summary": n.summary, "position_x": n.position_x, "position_y": n.position_y,
+                "parent_id": n.parent_id, "arc_type": n.arc_type,
+                "emotion_target": n.emotion_target, "word_target": n.word_target,
+                "metadata": n.metadata,
+            }
+            for n in graph.nodes
+        ],
+        "edges": [
+            {
+                "id": e.id, "source_id": e.source_id, "target_id": e.target_id,
+                "edge_type": e.edge_type, "label": e.label, "metadata": e.metadata,
+            }
+            for e in graph.edges
+        ],
+        "save_result": save_result,
+    }
+
+
+@app.put("/api/projects/{project_id}/outline-graph")
+async def update_outline_graph(project_id: str, body: dict, db=Depends(get_db)):
+    from core.outline.outline_service import OutlineNode, OutlineEdge, OutlineGraph, save_outline_graph
+    nodes = [
+        OutlineNode(
+            id=n.get("id", ""), node_type=n.get("node_type", "chapter"),
+            title=n.get("title", ""), summary=n.get("summary", ""),
+            position_x=n.get("position_x", 0), position_y=n.get("position_y", 0),
+            parent_id=n.get("parent_id"), arc_type=n.get("arc_type", "main"),
+            emotion_target=n.get("emotion_target", 5),
+            word_target=n.get("word_target", 0),
+            metadata=n.get("metadata", {}),
+        )
+        for n in body.get("nodes", [])
+    ]
+    edges = [
+        OutlineEdge(
+            id=e.get("id", ""), source_id=e.get("source_id", ""),
+            target_id=e.get("target_id", ""), edge_type=e.get("edge_type", "sequence"),
+            label=e.get("label", ""), metadata=e.get("metadata", {}),
+        )
+        for e in body.get("edges", [])
+    ]
+    graph = OutlineGraph(nodes=nodes, edges=edges)
+    result = await save_outline_graph(db, project_id, graph)
+    return result
+
+
+@app.post("/api/projects/{project_id}/outline-graph/modify")
+async def modify_outline_graph(project_id: str, body: dict, db=Depends(get_db)):
+    from core.outline.outline_service import (
+        load_outline_graph, ai_modify_outline, save_outline_graph,
+    )
+    current_graph = await load_outline_graph(db, project_id)
+    modified_graph = await ai_modify_outline(
+        db=db, project_id=project_id,
+        current_graph=current_graph,
+        instruction=body.get("instruction", ""),
+    )
+    save_result = await save_outline_graph(db, project_id, modified_graph)
+    return {
+        "project_id": project_id,
+        "nodes": [
+            {
+                "id": n.id, "node_type": n.node_type, "title": n.title,
+                "summary": n.summary, "position_x": n.position_x, "position_y": n.position_y,
+                "parent_id": n.parent_id, "arc_type": n.arc_type,
+                "emotion_target": n.emotion_target, "word_target": n.word_target,
+                "metadata": n.metadata,
+            }
+            for n in modified_graph.nodes
+        ],
+        "edges": [
+            {
+                "id": e.id, "source_id": e.source_id, "target_id": e.target_id,
+                "edge_type": e.edge_type, "label": e.label, "metadata": e.metadata,
+            }
+            for e in modified_graph.edges
+        ],
+        "save_result": save_result,
+    }
+
+
+@app.post("/api/projects/{project_id}/outline-graph/sync")
+async def sync_outline_to_chapters(project_id: str, db=Depends(get_db)):
+    from core.outline.outline_service import load_outline_graph, sync_outline_to_chapters
+    graph = await load_outline_graph(db, project_id)
+    result = await sync_outline_to_chapters(db, project_id, graph)
+    return result
+
+
+@app.post("/api/projects/{project_id}/outline-graph/parse-document")
+async def parse_document_to_outline(project_id: str, file: UploadFile, db=Depends(get_db)):
+    from core.outline.outline_service import parse_document_to_outline, save_outline_graph
+    content = await file.read()
+    graph = await parse_document_to_outline(db, project_id, content, file.filename or "unknown.txt")
+    if graph.nodes:
+        await save_outline_graph(db, project_id, graph)
+    return {
+        "nodes": [
+            {"id": n.id, "node_type": n.node_type, "title": n.title, "summary": n.summary,
+             "position_x": n.position_x, "position_y": n.position_y,
+             "parent_id": n.parent_id, "arc_type": n.arc_type,
+             "emotion_target": n.emotion_target, "word_target": n.word_target,
+             "metadata": n.metadata}
+            for n in graph.nodes
+        ],
+        "edges": [
+            {"id": e.id, "source_id": e.source_id, "target_id": e.target_id,
+             "edge_type": e.edge_type, "label": e.label, "metadata": e.metadata}
+            for e in graph.edges
+        ],
+    }

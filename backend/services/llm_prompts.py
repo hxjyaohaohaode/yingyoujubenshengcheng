@@ -1019,32 +1019,6 @@ def build_chapter_outline_prompt(project_name: str, genre: str, tone: str,
 
 请直接输出JSON，不要输出任何其他内容。"""
 
-    if force_prose_format:
-        fallback_system = f"""你是互动影游场景编剧。由于格式问题，本次使用简化模式。
-
-{CHINESE_WRITING_STANDARDS}
-
-请直接输出纯文本格式的场景内容，包含：
-1. 叙述段落（完整的小说式描写，包含画面感和感官描写）
-2. 对话段落（角色名：台词）
-3. 场景结尾的选择支（选项A/B/C及简述后果）
-
-不要输出JSON，不要输出代码块，直接写正文。"""
-
-        fallback_user = f"""题材/风格：{genre} / {style}
-
-世界观：{world_context[:1500]}
-
-角色：{character_states[:1000]}
-
-前序场景：{previous_scenes[:800]}
-
-本场景：{scene_code} | 类型：{scene_type} | 情感：{emotion_target}/10 | 地点：{location}
-
-请直接写出完整的场景正文（叙述+对话+选择支），至少800字。"""
-
-        return fallback_system, fallback_user
-
     return system_prompt, user_prompt
 
 
@@ -1284,6 +1258,32 @@ def build_scene_gen_prompt(
 {f"[素材] 参考素材：\\n{rag_context}\\n━━━━━━━━━━━━━━━━━━━━━━" if rag_context else ""}
 
 请直接输出JSON，不要输出任何其他内容。"""
+
+    if force_prose_format:
+        fallback_system = f"""你是互动影游场景编剧。由于格式问题，本次使用简化模式。
+
+{CHINESE_WRITING_STANDARDS}
+
+请直接输出纯文本格式的场景内容，包含：
+1. 叙述段落（完整的小说式描写，包含画面感和感官描写）
+2. 对话段落（角色名：台词）
+3. 场景结尾的选择支（选项A/B/C及简述后果）
+
+不要输出JSON，不要输出代码块，直接写正文。"""
+
+        fallback_user = f"""题材/风格：{genre} / {style}
+
+世界观：{world_context[:1500]}
+
+角色：{character_states[:1000]}
+
+前序场景：{previous_scenes[:800]}
+
+本场景：{scene_code} | 类型：{scene_type} | 情感：{emotion_target}/10 | 地点：{location}
+
+请直接写出完整的场景正文（叙述+对话+选择支），至少800字。"""
+
+        return fallback_system, fallback_user
 
     return system_prompt, user_prompt
 

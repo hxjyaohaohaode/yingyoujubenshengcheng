@@ -1,6 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { Modal, Button, App, Tag, Tooltip } from 'antd'
-import { WarningOutlined } from '@ant-design/icons'
 import type { ProjectCreatePayload } from '../api/client'
 import { projectsApi } from '../api/client'
 import { useProjectStore } from '../stores/projectStore'
@@ -179,7 +178,7 @@ export default function CreateProjectModal({ open, onClose }: CreateProjectModal
     setHasUserModified(true)
   }, [])
 
-  // 智能推荐：当项目信息变化时自动获取推荐参数
+  // 智能推荐：当字数或体裁变化时自动获取推荐参数
   useEffect(() => {
     if (!open) return
 
@@ -224,16 +223,14 @@ export default function CreateProjectModal({ open, onClose }: CreateProjectModal
           console.warn('推荐参数获取失败:', e)
         }
       }
-    }, 600)
+    }, 500)
 
     return () => {
       if (recommendTimeoutRef.current) {
         clearTimeout(recommendTimeoutRef.current)
       }
     }
-  }, [config.targetWordCountWan, config.targetWordCountCustom, config.genre,
-      config.configSubGenre, config.configCoreContradiction, config.configTheme,
-      config.configTone, config.configNarrativePov, open])
+  }, [config.targetWordCountWan, config.targetWordCountCustom, config.genre, open])
 
   // 参数校验
   useEffect(() => {
@@ -454,7 +451,7 @@ export default function CreateProjectModal({ open, onClose }: CreateProjectModal
             alignItems: 'center',
             gap: 8,
           }}>
-            <WarningOutlined style={{ color: 'var(--color-danger)', fontSize: 14 }} />
+            <span style={{ fontSize: 14 }}>⚠️</span>
             <span style={{ fontSize: 12, color: 'var(--color-danger)' }}>{validation.message}</span>
           </div>
         )}
@@ -640,7 +637,7 @@ export default function CreateProjectModal({ open, onClose }: CreateProjectModal
               </div>
               {capacityRatio > 100 && (
                 <div style={{ fontSize: 11, color: 'var(--color-danger)', marginTop: 6 }}>
-                  当前章节容量不足以容纳目标字数，请增加章节数或提高每章字数上限
+                  ⚠️ 当前章节容量不足以容纳目标字数，请增加章节数或提高每章字数上限
                 </div>
               )}
             </div>
@@ -668,9 +665,9 @@ export default function CreateProjectModal({ open, onClose }: CreateProjectModal
                 />
                 <div style={{ fontSize: 11, color: 'var(--color-muted)', marginTop: 4 }}>
                   {wordCountWan >= 100 && config.configTargetEndingCount < 5
-                    ? '史诗级项目建议≥5个结局'
+                    ? '⚠️ 史诗级项目建议≥5个结局'
                     : config.configMaxBranchDepth > 1 && config.configTargetEndingCount < 2
-                      ? '分支深度>1时需要≥2个结局'
+                      ? '⚠️ 分支深度>1时需要≥2个结局'
                       : '不同结局提供重玩价值'}
                 </div>
               </div>
@@ -744,7 +741,7 @@ export default function CreateProjectModal({ open, onClose }: CreateProjectModal
                       ? '中度互动，有探索深度'
                       : '深度互动，高重玩价值'}
                 {config.configMaxBranchDepth > 1 && config.configTargetEndingCount < 2 && (
-                  <span style={{ color: 'var(--color-danger)', marginLeft: 8 }}>需要≥2个结局</span>
+                  <span style={{ color: 'var(--color-danger)', marginLeft: 8 }}>⚠️ 需要≥2个结局</span>
                 )}
               </div>
             </div>
@@ -778,7 +775,7 @@ export default function CreateProjectModal({ open, onClose }: CreateProjectModal
             </div>
             {config.configMinBranchesPerChoice > config.configMaxBranchesPerChoice && (
               <div style={{ fontSize: 11, color: 'var(--color-danger)' }}>
-                最少分支选项不能大于最多分支选项
+                ⚠️ 最少分支选项不能大于最多分支选项
               </div>
             )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

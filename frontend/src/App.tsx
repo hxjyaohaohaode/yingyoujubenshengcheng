@@ -19,6 +19,7 @@ const Settings = lazy(() => import('./pages/Settings'))
 const PipelineView = lazy(() => import('./pages/PipelineView'))
 const ScriptViz = lazy(() => import('./pages/ScriptViz'))
 const ScriptPreview = lazy(() => import('./pages/ScriptPreview'))
+const OutlineCanvas = lazy(() => import('./pages/OutlineCanvas'))
 
 function AppRoutes() {
   return (
@@ -61,6 +62,14 @@ function AppRoutes() {
           element={
             <Suspense fallback={<GlobalLoading pageType="chapters" />}>
               <ChapterOutline />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/outline-canvas"
+          element={
+            <Suspense fallback={<GlobalLoading pageType="chapters" />}>
+              <OutlineCanvas />
             </Suspense>
           }
         />

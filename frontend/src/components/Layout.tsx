@@ -15,6 +15,7 @@ import {
   BranchesOutlined, UsergroupAddOutlined,
   DeploymentUnitOutlined,
   RobotOutlined, DeleteOutlined,
+  PartitionOutlined,
 } from '@ant-design/icons'
 import { useProjectStore } from '../stores/projectStore'
 import { useThemeStore } from '../stores/themeStore'
@@ -34,14 +35,15 @@ const NAV_ITEMS: NavItem[] = [
   { key: '/world', icon: <BulbOutlined />, label: '03  改编策略·世界观' },
   { key: '/characters', icon: <TeamOutlined />, label: '04  角色阵营' },
   { key: '/chapters', icon: <ApartmentOutlined />, label: '05  主线合流' },
-  { key: '/settings', icon: <SettingOutlined />, label: '06  变量规则' },
-  { key: '/scenes', icon: <AppstoreOutlined />, label: '07  Storylet' },
-  { key: '/foreshadows', icon: <BranchesOutlined />, label: '08  选项后果' },
-  { key: '/review', icon: <UsergroupAddOutlined />, label: '09  多人推演' },
-  { key: '/emotion-curve', icon: <SafetyOutlined />, label: '10  审校修补' },
-  { key: '/script-preview', icon: <PlayCircleOutlined />, label: '11  试玩预览' },
-  { key: '/export', icon: <SendOutlined />, label: '12  导出交付' },
-  { key: '/script-viz', icon: <EyeOutlined />, label: '13  可视化' },
+  { key: '/outline-canvas', icon: <PartitionOutlined />, label: '06  大纲架构' },
+  { key: '/settings', icon: <SettingOutlined />, label: '07  变量规则' },
+  { key: '/scenes', icon: <AppstoreOutlined />, label: '08  Storylet' },
+  { key: '/foreshadows', icon: <BranchesOutlined />, label: '09  选项后果' },
+  { key: '/review', icon: <UsergroupAddOutlined />, label: '10  多人推演' },
+  { key: '/emotion-curve', icon: <SafetyOutlined />, label: '11  审校修补' },
+  { key: '/script-preview', icon: <PlayCircleOutlined />, label: '12  试玩预览' },
+  { key: '/export', icon: <SendOutlined />, label: '13  导出交付' },
+  { key: '/script-viz', icon: <EyeOutlined />, label: '14  可视化' },
 ]
 
 export default function AppLayout() {

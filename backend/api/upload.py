@@ -1,6 +1,6 @@
 import uuid
 import logging
-from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
+from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
@@ -128,3 +128,26 @@ async def delete_upload(project_id: str, file_id: str, db: AsyncSession = Depend
     except Exception as e:
         logger.warning("删除上传文件失败: %s", str(e)[:200])
         raise HTTPException(status_code=500, detail=f"删除失败: {str(e)[:200]}")
+
+
+@router.post("/scripts/parse")
+async def parse_script(
+    file: UploadFile = File(...),
+    project_id: str = Form(...),
+    db: AsyncSession = Depends(get_db),
+):
+    if not project_id:
+        raise HTTPException(status_code=400, detail="需要提供project_id")
+
+    content = await file.read()
+    try:
+        text = content.decode("utf-8")
+    except UnicodeDecodeError:
+        try:
+            text = content.decode("gbk")
+        except UnicodeDecodeError:
+            raise HTTPException(status_code=400, detail="无法解码文件，请使用UTF-8或GBK编码")
+
+    from core.upload.file_handler import parse_uploaded_script
+    result = await parse_uploaded_script(db, project_id, text, file.filename or "未命名剧本")
+    return {"status": "ok", "data": result}
