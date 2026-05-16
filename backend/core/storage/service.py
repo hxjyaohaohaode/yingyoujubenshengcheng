@@ -428,7 +428,10 @@ class StorageService:
                 try:
                     chars_list = json.loads(chars_inv) if isinstance(chars_inv, str) else chars_inv
                     for c in (chars_list if isinstance(chars_list, list) else []):
-                        c_name = str(c) if isinstance(c, str) else (c.get("name", str(c)) if isinstance(c, dict) else str(c))
+                        if isinstance(c, dict):
+                            c_name = c.get("name", str(c))
+                        else:
+                            c_name = str(c)
                         if c_name not in char_scene_map:
                             char_scene_map[c_name] = []
                         char_scene_map[c_name].append(str(sid))
@@ -706,12 +709,13 @@ class StorageService:
             if fs_ops:
                 if isinstance(fs_ops, str):
                     try:
-                        fs_ops = json.loads(fs_ops)
+                        fs_ops_parsed: list = json.loads(fs_ops)
                     except (json.JSONDecodeError, TypeError):
-                        fs_ops = []
-                if isinstance(fs_ops, list):
-                    for op in fs_ops:
-                        if isinstance(op, dict) and str(op.get("fs_id", "")) == str(foreshadow_id):
+                        fs_ops_parsed = []
+                else:
+                    fs_ops_parsed = fs_ops if isinstance(fs_ops, list) else []
+                for op in fs_ops_parsed:
+                    if isinstance(op, dict) and str(op.get("fs_id", "")) == str(foreshadow_id):
                             matched.append(d)
                             break
         return matched

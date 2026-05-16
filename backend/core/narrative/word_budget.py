@@ -47,7 +47,7 @@ def is_within_budget(actual_words: int, target_words: int, tolerance_pct: float 
 
 
 def get_compression_instruction(actual_words: int, target_words: int) -> str:
-    target = int(target_words)
+    target = target_words
     ratio = actual_words / target_words if target_words > 0 else 1
     if 0.8 <= ratio <= 1.2:
         return ""

@@ -138,7 +138,7 @@ class ConfigRecommender:
 
         # 用户填写越完整，推荐越应该偏向定制化而不是通用模板。
         detail_fields = [sub_genre, core_contradiction, theme, style]
-        filled_detail_count = sum(1 for field in detail_fields if str(field).strip())
+        filled_detail_count = sum(1 for field in detail_fields if str(field).strip() != "")
         detail_multiplier = min(1.18, 1.0 + filled_detail_count * 0.04)
 
         tone_depth_bonus = {
