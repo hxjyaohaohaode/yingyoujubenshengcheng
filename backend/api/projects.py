@@ -368,7 +368,7 @@ async def update_project(
     return _project_to_response(project)
 
 
-@router.delete("/projects/{project_id}", status_code=204)
+@router.delete("/projects/{project_id}")
 async def delete_project(project_id: str, db: AsyncSession = Depends(get_db)):
     from models.project_config import ProjectConfig
     from models.scene import Scene, SceneVersion
@@ -438,6 +438,7 @@ async def delete_project(project_id: str, db: AsyncSession = Depends(get_db)):
     await _safe_execute(db, text("DELETE FROM pipeline_state WHERE project_id = :project_id"), {"project_id": project_id})
     await _safe_execute(db, delete(Project).where(Project.id == project_id))
     await db.commit()
+    return {"status": "deleted", "project_id": str(project_id)}
 
 
 @router.get("/projects/{project_id}/config")
