@@ -171,14 +171,10 @@ class PipelineExecutor:
                     project_id, phase.repeat_until, state
                 )
                 if should_repeat:
-                    # 找到场景写作步骤的索引，直接跳到该步骤而不是从头开始
-                    scene_writer_idx = None
-                    for idx, s in enumerate(phase.steps):
-                        if s.skill in ("scene_writer", "component_writer", "chapter_writer", "novel_writer"):
-                            scene_writer_idx = idx
-                            break
-                    next_step = scene_writer_idx if scene_writer_idx is not None else 0
+                    next_step = 0
                     await self.state_machine.set_step(project_id, state.current_phase_index, next_step)
+                    current_iter = state.result_data.get("scene_iteration_count", 0) + 1
+                    await self.state_machine.update_result_data(project_id, "scene_iteration_count", current_iter)
                     try:
                         chapters = await self.storage.get_chapter_outlines(project_id)
                         cfg = await self.storage.get_project_config(project_id) or {}
@@ -328,6 +324,11 @@ class PipelineExecutor:
         返回 False = 所有场景已完成（停止循环）
         """
         try:
+            max_scene_iterations = state.result_data.get("max_scene_iterations", 30)
+            current_iteration = state.result_data.get("scene_iteration_count", 0)
+            if current_iteration >= max_scene_iterations:
+                return False
+
             target_word_count = state.result_data.get("target_word_count", 50000)
             target_chapter_count = state.result_data.get("chapter_count", 10)
             chapters = await self.storage.get_chapter_outlines(project_id)
@@ -1202,6 +1203,33 @@ class PipelineExecutor:
                     for fs in fs_list:
                         await self._notify_data_changed(project_id, "foreshadow_created",
                                                          {"entity_id": fs.get("name", "")})
+                    links_data = data.get("links", [])
+                    if not links_data:
+                        for v in data.values():
+                            if isinstance(v, dict) and isinstance(v.get("links"), list):
+                                links_data = v["links"]
+                                break
+                    if links_data:
+                        for link in links_data:
+                            source_id = link.get("source_id", "")
+                            target_id = link.get("target_id", "")
+                            link_type = link.get("link_type", "SUPPORTS")
+                            strength = link.get("strength", 0.5)
+                            description = link.get("description", "")
+                            if source_id and target_id:
+                                try:
+                                    link_id = str(uuid_mod.uuid4())
+                                    now_expr = "datetime('now')" if _IS_SQLITE else "NOW()"
+                                    await self.db.execute(sa_text(
+                                        f"INSERT INTO foreshadow_links (id, project_id, source_id, target_id, link_type, strength, description, created_at, updated_at) "
+                                        f"VALUES (:id, :pid, :sid, :tid, :lt, :st, :desc, {now_expr}, {now_expr})"
+                                    ), {"id": link_id, "pid": project_id, "sid": source_id, "tid": target_id, "lt": link_type, "st": strength, "desc": description})
+                                except Exception:
+                                    pass
+                        try:
+                            await self.db.commit()
+                        except Exception:
+                            pass
                 else:
                     logger.warning("foreshadow_designer 未生成有效伏笔数据，使用空伏笔列表继续流水线")
                     await self.state_machine.update_result_data(project_id, "foreshadows", [])

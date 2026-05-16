@@ -618,6 +618,7 @@ async def dispatch_foreshadow_generate(project_id: uuid.UUID,
 
     chapter_outlines: list[dict] = []
     chapter_count = 20
+    genre = ""
     try:
         from models.chapter import Chapter as ChapterModel
         from models.project_config import ProjectConfig
@@ -627,6 +628,8 @@ async def dispatch_foreshadow_generate(project_id: uuid.UUID,
         config = config_result.scalar_one_or_none()
         if config and config.chapter_count:
             chapter_count = config.chapter_count
+        if config and hasattr(config, "genre") and config.genre:
+            genre = config.genre
 
         chapters_result = await db.execute(
             select(ChapterModel).where(ChapterModel.project_id == project_id)
@@ -726,6 +729,7 @@ async def generate_foreshadow_design(project_id: uuid.UUID,
 
     chapter_outlines: list[dict] = []
     chapter_count = 20
+    genre = ""
     try:
         from models.chapter import Chapter as ChapterModel
         from models.project_config import ProjectConfig
@@ -735,6 +739,8 @@ async def generate_foreshadow_design(project_id: uuid.UUID,
         config = config_result.scalar_one_or_none()
         if config and config.chapter_count:
             chapter_count = config.chapter_count
+        if config and hasattr(config, "genre") and config.genre:
+            genre = config.genre
 
         chapters_result = await db.execute(
             select(ChapterModel).where(ChapterModel.project_id == project_id)

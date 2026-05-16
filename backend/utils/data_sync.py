@@ -1,11 +1,12 @@
 import logging
 from datetime import datetime, UTC
 
+from websocket.manager import ws_manager
+
 logger = logging.getLogger(__name__)
 
 async def notify_data_changed(project_id: str, change_type: str):
     try:
-        from websocket.manager import ws_manager
         await ws_manager.broadcast_to_project(str(project_id), {
             "type": change_type,
             "project_id": str(project_id),

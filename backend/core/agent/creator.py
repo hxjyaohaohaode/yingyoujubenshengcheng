@@ -957,14 +957,44 @@ class CreatorAgent(BaseAgent):
             context["chapter_characters"] = context.get("character_states", "")
             context["target_word_count"] = payload.get("target_word_count", project_config.get("target_word_count", 3000))
 
-            prev_scene = payload.get("previous_scene_content", "")
-            if prev_scene:
-                context["previous_scene_context"] = f"## 前序场景全文（必须衔接）\n{prev_scene}"
+            prev_scene_text = context.get("previous_scene", "")
+            if prev_scene_text and prev_scene_text.strip():
+                context["previous_scene_context"] = f"## 前序场景全文（必须衔接）\n{prev_scene_text}"
             else:
                 context["previous_scene_context"] = "## 前序场景\n（这是第一个场景，需要以引人入胜的方式开场）"
 
+            ch_id_for_count = payload.get("chapter_id", "")
+            if ch_id_for_count:
+                existing = await self.storage.get_scenes_by_chapter(project_id, ch_id_for_count)
+                context["current_scene_index"] = len(existing) if existing else 0
+            else:
+                context["current_scene_index"] = 0
+
+            foreshadow_tasks = []
+            try:
+                ch_idx_fs = payload.get("current_chapter_index", 0)
+                all_fs = await self.storage.get_foreshadow_states(project_id)
+                for fs in all_fs:
+                    fs_status = fs.get("current_status", "design")
+                    fs_cat = fs.get("foreshadow_category", "chapter")
+                    plant_ch = fs.get("plant_chapter", "")
+                    reinforce_ch = fs.get("reinforce_chapter", "")
+                    reveal_ch = fs.get("reveal_chapter", "")
+                    if fs_status == "design" and (not plant_ch or str(ch_idx_fs + 1) in str(plant_ch)):
+                        foreshadow_tasks.append(f"🌱 埋设：{fs.get('description', '')[:80]}（{fs_cat}级伏笔）")
+                    elif fs_status == "planted" and (not reinforce_ch or str(ch_idx_fs + 1) in str(reinforce_ch)):
+                        foreshadow_tasks.append(f"🔄 强化：{fs.get('description', '')[:80]}（{fs_cat}级伏笔）")
+                    elif fs_status == "reinforced" and (not reveal_ch or str(ch_idx_fs + 1) in str(reveal_ch)):
+                        foreshadow_tasks.append(f"✨ 回收：{fs.get('description', '')[:80]}（{fs_cat}级伏笔）")
+            except Exception:
+                pass
+            if foreshadow_tasks:
+                context["foreshadow_tasks"] = "## 本场景必须执行的伏笔任务\n" + "\n".join(f"- {t}" for t in foreshadow_tasks)
+            else:
+                context["foreshadow_tasks"] = "## 伏笔任务\n（本场景无强制伏笔任务，但可自然埋设新伏笔）"
+
             ch_idx = payload.get("current_chapter_index", 0)
-            sc_idx = payload.get("current_scene_index", 0)
+            sc_idx = context.get("current_scene_index", payload.get("current_scene_index", 0))
             total_ch = payload.get("chapter_count", 10)
             total_sc_in_ch = payload.get("scenes_in_chapter", 3)
             if sc_idx == 0 and ch_idx == 0:

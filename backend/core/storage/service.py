@@ -6,7 +6,7 @@ Agent 不直接操作数据库，全部通过 StorageService。
 import json
 import uuid
 from datetime import datetime, UTC
-from typing import Optional
+from typing import Any, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
@@ -714,13 +714,14 @@ class StorageService:
             d = dict(zip(cols, row))
             fs_ops = d.get("foreshadow_ops")
             if fs_ops:
+                fs_ops_parsed: list[dict[str, Any]] = []
                 if isinstance(fs_ops, str):
                     try:
-                        fs_ops_parsed: list = json.loads(fs_ops)
+                        fs_ops_parsed = json.loads(fs_ops)
                     except (json.JSONDecodeError, TypeError):
-                        fs_ops_parsed = []
-                else:
-                    fs_ops_parsed = fs_ops if isinstance(fs_ops, list) else []
+                        pass
+                elif isinstance(fs_ops, list):
+                    fs_ops_parsed = fs_ops
                 for op in fs_ops_parsed:
                     if isinstance(op, dict) and str(op.get("fs_id", "")) == str(foreshadow_id):
                             matched.append(d)
