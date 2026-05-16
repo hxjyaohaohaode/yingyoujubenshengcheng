@@ -81,6 +81,48 @@ def _safe_json_parse(raw):
     return None
 
 
+def format_to_markdown(project_data: dict, chapters: list, scenes: list, characters: list) -> str:
+    lines = []
+    lines.append(f"# {project_data.get('title', '剧本')}")
+    lines.append("")
+    for ch in sorted(chapters, key=lambda x: x.get('chapter_index', 0)):
+        lines.append(f"## 第{ch.get('chapter_index', 0)+1}章 {ch.get('title', '')}")
+        lines.append("")
+        ch_scenes = [s for s in scenes if s.get('chapter_id') == str(ch.get('id', ''))]
+        for sc in sorted(ch_scenes, key=lambda x: x.get('scene_index', 0)):
+            content = sc.get('content', {})
+            if isinstance(content, str):
+                try:
+                    content = json.loads(content)
+                except Exception:
+                    content = {'narration': content}
+            narration = content.get('narration', '')
+            if narration:
+                for para in narration.split('\n'):
+                    if para.strip():
+                        lines.append(para.strip())
+                        lines.append("")
+            dialogue = content.get('dialogue', [])
+            if isinstance(dialogue, list):
+                for d in dialogue:
+                    speaker = d.get('speaker', d.get('char', ''))
+                    line_text = d.get('line', d.get('text', ''))
+                    subtext = d.get('subtext', '')
+                    if speaker and line_text:
+                        lines.append(f"> **{speaker}**：{line_text}")
+                        if subtext:
+                            lines.append(f"> *（潜台词：{subtext}）*")
+                        lines.append("")
+            choices = content.get('choices', [])
+            if isinstance(choices, list) and choices:
+                lines.append("**互动选择：**")
+                for i, c in enumerate(choices, 1):
+                    text = c.get('text', c.get('label', ''))
+                    lines.append(f"{i}. {text}")
+                lines.append("")
+    return '\n'.join(lines)
+
+
 def _build_foreshadow_arcs(foreshadows, characters, scenes, world_config):
     arcs = []
     char_map = {str(c.id): c for c in characters}
@@ -237,11 +279,8 @@ async def export_project(
     if format == "json":
         return await _export_json_streaming(project, runtime, chapters, sections, choice_designs, scenes, characters, foreshadows, foreshadow_relations, relations, audit_data, chapter_map)
 
-    if format == "markdown":
-        return await _export_markdown_streaming(project, runtime, chapters, sections, choice_designs, scenes, characters, foreshadows, foreshadow_relations, relations, chapter_map)
-
-    if format == "text":
-        return await _export_text_streaming(project, runtime, chapters, scenes, characters, foreshadows)
+    if format in ("markdown", "txt"):
+        return await _export_readable_streaming(project, runtime, chapters, scenes, characters, format)
 
     if format == "excel":
         return _export_csv(scenes, characters, foreshadows, chapter_map)
@@ -373,8 +412,6 @@ async def _export_json_streaming(project, runtime, chapters, sections, choice_de
                 "target_word_count": runtime.target_word_count,
                 "status": project.status,
                 "current_phase": runtime.current_phase,
-                "created_at": project.created_at.isoformat() if project.created_at else None,
-                "updated_at": project.updated_at.isoformat() if project.updated_at else None,
             },
             "world_settings": world_config,
             "characters": [
@@ -540,374 +577,47 @@ async def _export_json_streaming(project, runtime, chapters, sections, choice_de
     return StreamingResponse(generate(), media_type="application/json")
 
 
-async def _export_markdown_streaming(project, runtime, chapters, sections, choice_designs, scenes, characters, foreshadows, foreshadow_relations, relations, chapter_map):
+async def _export_readable_streaming(project, runtime, chapters, scenes, characters, export_format):
     async def generate():
-        lines = []
-
-        lines.extend([f"# {project.name}", ""])
-        if project.description:
-            lines.extend([f"> {project.description}", ""])
-        lines.extend([
-            f"**题材**: {runtime.genre or '未设定'}  ",
-            f"**风格**: {runtime.style or '未设定'}  ",
-            f"**目标字数**: {runtime.target_word_count:,}字  ",
-            "",
-            "---",
-            "",
-        ])
-
-        world_config = runtime.config.custom_checker_rules.get("world_settings", {}) if runtime.config and runtime.config.custom_checker_rules else {}
-        if world_config:
-            lines.extend(["# 世界观设定", ""])
-            world_labels = {
-                "social_structure": "社会结构",
-                "tech_magic": "科技/魔法体系",
-                "geography": "地理环境",
-                "history": "历史背景",
-                "culture": "文化习俗",
-                "constraints": "约束条件",
-                "impossible": "不可能事项",
+        project_data = {
+            "title": project.name,
+            "description": project.description,
+        }
+        chapters_data = []
+        for ch in chapters:
+            ch_dict = {
+                "id": str(ch.id),
+                "chapter_index": getattr(ch, 'chapter_number', 0) or 0,
+                "title": ch.title,
             }
-            for key, label in world_labels.items():
-                val = world_config.get(key, "")
-                if val:
-                    lines.extend([f"## {label}", "", val, ""])
-            lines.extend(["---", ""])
+            chapters_data.append(ch_dict)
 
-        if characters:
-            lines.extend(["# 角色阵容", ""])
-            for c in characters:
-                lines.extend([
-                    f"## {c.name} ({c.role_type or '未设定类型'})",
-                    "",
-                    f"**核心动机**: {c.core_goal or '未设定'}",
-                    f"**核心恐惧**: {c.core_fear or '未设定'}",
-                    "",
-                ])
-                if c.background:
-                    lines.extend(["**背景故事**:", "", c.background, ""])
-                if c.surface_image:
-                    lines.extend(["**表面形象**:", "", c.surface_image, ""])
-                if c.true_self:
-                    lines.extend(["**真实面目**:", "", c.true_self, ""])
-                if c.language_style:
-                    lines.extend([f"**语言风格**: {c.language_style}", ""])
-                if c.catchphrase:
-                    lines.extend([f"**口头禅**: 「{c.catchphrase}」", ""])
-                if c.arc_description:
-                    lines.extend(["**角色弧线**:", "", c.arc_description, ""])
-                lines.extend([""])
-            lines.extend(["---", ""])
+        scenes_data = []
+        for s in scenes:
+            sc_dict = {
+                "id": str(s.id),
+                "chapter_id": str(s.chapter_id) if s.chapter_id else "",
+                "scene_index": s.scene_code if hasattr(s, 'scene_code') else 0,
+                "content": {
+                    "narration": s.narration or "",
+                    "dialogue": s.dialogue or [],
+                    "choices": s.choices or [],
+                },
+            }
+            scenes_data.append(sc_dict)
 
-        if foreshadows:
-            lines.extend(["# 伏笔系统", ""])
-            for f in foreshadows:
-                status_label = {"design": "设计中", "planted": "已埋设", "reinforced": "已强化", "revealed": "已揭示"}.get(f.current_status, f.current_status)
-                lines.extend([
-                    f"## {f.name} ({f.fs_code}) - {status_label}",
-                    "",
-                    f"**类型**: {f.fs_type or '剧情'}",
-                    f"**层级**: {f.foreshadow_tier or 'chapter'}",
-                    "",
-                ])
-                if f.surface_layer:
-                    lines.extend(["**表层**:", "", f.surface_layer, ""])
-                if f.deep_layer:
-                    lines.extend(["**深层**:", "", f.deep_layer, ""])
-                if f.truth_layer:
-                    lines.extend(["**真相层**:", "", f.truth_layer, ""])
+        characters_data = []
+        for c in characters:
+            characters_data.append({
+                "id": str(c.id),
+                "name": c.name,
+            })
 
-                wrefs = _safe_json_parse(f.worldview_refs) or []
-                crefs = _safe_json_parse(f.character_refs) or []
-                if wrefs:
-                    lines.extend([f"**世界观关联**: {', '.join(str(r) for r in wrefs)}", ""])
-                if crefs:
-                    char_map = {str(c.id): c.name for c in characters}
-                    ref_names = [char_map.get(str(r), str(r)) for r in crefs]
-                    lines.extend([f"**角色关联**: {', '.join(ref_names)}", ""])
+        markdown_content = format_to_markdown(project_data, chapters_data, scenes_data, characters_data)
+        yield markdown_content
 
-                scene_map = {str(s.id): s for s in scenes}
-                if f.plant_scene_id:
-                    ps = scene_map.get(str(f.plant_scene_id))
-                    lines.extend([f"**埋设场景**: {ps.scene_code if ps else str(f.plant_scene_id)}", ""])
-                reinforce_scenes = _safe_json_parse(f.reinforce_scenes) or []
-                if reinforce_scenes:
-                    rs_codes = []
-                    for rsid in reinforce_scenes:
-                        rs = scene_map.get(str(rsid))
-                        rs_codes.append(rs.scene_code if rs else str(rsid))
-                    lines.extend([f"**强化场景**: {', '.join(rs_codes)}", ""])
-                if f.reveal_scene_id:
-                    rv = scene_map.get(str(f.reveal_scene_id))
-                    lines.extend([f"**揭示场景**: {rv.scene_code if rv else str(f.reveal_scene_id)}", ""])
-
-                lines.extend([""])
-            lines.extend(["---", ""])
-
-        if foreshadow_relations:
-            lines.extend(["# 伏笔关联弧线", ""])
-            for fr in foreshadow_relations:
-                from_name = fr.from_fs.name if fr.from_fs else str(fr.from_fs_id)
-                to_name = fr.to_fs.name if fr.to_fs else str(fr.to_fs_id)
-                lines.extend([
-                    f"- **{from_name}** → *{fr.relation_type}* → **{to_name}**",
-                    "",
-                ])
-            lines.extend(["---", ""])
-
-        section_map_by_chapter = {}
-        for sec in sections:
-            cid = str(sec.chapter_id)
-            section_map_by_chapter.setdefault(cid, []).append(sec)
-
-        choice_map_by_section = {}
-        for cd in choice_designs:
-            sid = str(cd.section_id)
-            choice_map_by_section.setdefault(sid, []).append(cd)
-
-        lines.extend(["# 正文", ""])
-        for ch in chapters:
-            lines.extend([f"## 第{ch.chapter_number}章: {ch.title or ''}", ""])
-            if ch.summary:
-                lines.extend([f"*{ch.summary}*", ""])
-            if ch.core_conflict:
-                lines.extend([f"**核心冲突**: {ch.core_conflict}", ""])
-
-            ch_sections = section_map_by_chapter.get(str(ch.id), [])
-            if ch_sections:
-                for sec in ch_sections:
-                    lines.extend([f"### 第{ch.chapter_number}.{sec.section_number}节: {sec.title or ''}", ""])
-                    if sec.summary:
-                        lines.extend([f"*{sec.summary}*", ""])
-                    if sec.branch_type and sec.branch_type != "exploration":
-                        lines.extend([f"[BRANCH] 分支类型: {sec.branch_type}", ""])
-
-                    sec_choices = choice_map_by_section.get(str(sec.id), [])
-                    if sec_choices:
-                        lines.extend(["[CHOICE] 节内互动选择:", ""])
-                        for cd in sec_choices:
-                            moral_label = {"good": "善", "neutral": "中", "evil": "恶", "gray": "灰"}.get(cd.moral_alignment, cd.moral_alignment)
-                            if cd.is_hidden:
-                                lines.extend([f"  [HIDDEN_CHOICE] {cd.choice_number}. {cd.text} (道德: {moral_label} | 解锁条件: {cd.hidden_condition or '未设定'})"])
-                            else:
-                                lines.extend([f"  [CHOICE] {cd.choice_number}. {cd.text} (道德: {moral_label})"])
-
-                            if cd.consequence_direct or cd.consequence_indirect or cd.consequence_long_term:
-                                lines.extend(["    [CONSEQUENCE] 后果链:"])
-                                if cd.consequence_direct:
-                                    lines.extend([f"      直接 → {cd.consequence_direct}"])
-                                if cd.consequence_indirect:
-                                    lines.extend([f"      间接 → {cd.consequence_indirect}"])
-                                if cd.consequence_long_term:
-                                    lines.extend([f"      远期 → {cd.consequence_long_term}"])
-
-                            if cd.branch_target:
-                                lines.extend([f"    [BRANCH] → {cd.branch_target}"])
-
-                            if cd.character_impact:
-                                impacts = _safe_json_parse(cd.character_impact) or []
-                                for imp in impacts:
-                                    if isinstance(imp, dict):
-                                        char_id = imp.get("character_id", imp.get("char_id", ""))
-                                        char_map_local = {str(c.id): c.name for c in characters}
-                                        char_name = char_map_local.get(str(char_id), str(char_id))
-                                        effect = imp.get("effect", imp.get("description", str(imp)))
-                                        lines.extend([f"    角色影响 → {char_name}: {effect}"])
-
-                        lines.extend([""])
-
-                    sec_scene_ids = _safe_json_parse(sec.scene_ids) or []
-                    if sec_scene_ids:
-                        lines.extend([f"  *场景: {', '.join(str(sid) for sid in sec_scene_ids)}*", ""])
-
-            ch_scenes = [s for s in scenes if str(s.chapter_id) == str(ch.id)]
-            for s in ch_scenes:
-                location_weather = f"{s.location or '未知地点'}"
-                if s.weather:
-                    location_weather += f" - {s.weather}"
-                lines.extend([
-                    f"### 场景 {s.scene_code}: {location_weather}", "",
-                    f"*情感强度: {_format_emotion_bar(s.emotion_level or 5)}*", "",
-                ])
-
-                if s.is_wow_moment:
-                    lines.extend([f"[WOW_MOMENT] Wow 哇塞时刻", ""])
-                    if s.wow_type:
-                        lines.extend([f"  创意类型: {s.wow_type}"])
-                    if s.wow_spec:
-                        try:
-                            wow_plans = json.loads(s.wow_spec) if isinstance(s.wow_spec, str) else s.wow_spec
-                            if isinstance(wow_plans, list):
-                                for wp in wow_plans:
-                                    if isinstance(wp, dict):
-                                        lines.extend([f"  方案: {wp.get('summary', '')} (评分: {wp.get('score', '-')})"])
-                        except (json.JSONDecodeError, TypeError):
-                            pass
-                    lines.extend([""])
-
-                if s.characters_involved:
-                    try:
-                        chars_inv = json.loads(s.characters_involved) if isinstance(s.characters_involved, str) else s.characters_involved
-                        if isinstance(chars_inv, list) and chars_inv:
-                            char_names = []
-                            for ci in chars_inv:
-                                if isinstance(ci, str):
-                                    char_names.append(ci)
-                                elif isinstance(ci, dict):
-                                    char_names.append(ci.get("name", str(ci)))
-                            if char_names:
-                                lines.extend([f"**出场角色**: {', '.join(char_names)}", ""])
-                    except Exception:
-                        pass
-
-                if s.narration:
-                    lines.extend([s.narration, ""])
-                dialogue_text = _format_dialogue(s.dialogue)
-                if dialogue_text:
-                    lines.extend([dialogue_text, ""])
-                actions_text = _format_actions(s.actions)
-                if actions_text:
-                    lines.extend([actions_text, ""])
-
-                scene_choices = _safe_json_parse(s.choices) or []
-                if scene_choices:
-                    lines.extend(["[CHOICE] 场景互动选择:", ""])
-                    for i, c in enumerate(scene_choices, 1):
-                        if isinstance(c, dict):
-                            text = c.get("text", c.get("description", str(c)))
-                            is_hidden = c.get("hidden", False)
-                            moral = c.get("moral_alignment", "")
-                            moral_label = {"good": "善", "neutral": "中", "evil": "恶", "gray": "灰"}.get(moral, moral)
-
-                            if is_hidden:
-                                hidden_cond = c.get("hidden_condition", "未设定")
-                                lines.extend([f"  [HIDDEN_CHOICE] {i}. {text} (道德: {moral_label} | 解锁条件: {hidden_cond})"])
-                            else:
-                                lines.extend([f"  [CHOICE] {i}. {text}" + (f" (道德: {moral_label})" if moral_label else "")])
-
-                            cons_direct = c.get("consequence_direct", c.get("consequence", ""))
-                            cons_indirect = c.get("consequence_indirect", "")
-                            cons_long = c.get("consequence_long_term", "")
-                            if cons_direct or cons_indirect or cons_long:
-                                lines.extend(["    [CONSEQUENCE] 后果链:"])
-                                if cons_direct:
-                                    lines.extend([f"      直接 → {cons_direct}"])
-                                if cons_indirect:
-                                    lines.extend([f"      间接 → {cons_indirect}"])
-                                if cons_long:
-                                    lines.extend([f"      远期 → {cons_long}"])
-
-                            branch_target = c.get("branch_target", c.get("jump_scene", ""))
-                            if branch_target:
-                                lines.extend([f"    [BRANCH] → {branch_target}"])
-
-                            char_impact = c.get("character_impact", [])
-                            if char_impact and isinstance(char_impact, list):
-                                for imp in char_impact:
-                                    if isinstance(imp, dict):
-                                        cid = imp.get("character_id", imp.get("char_id", ""))
-                                        char_map_local = {str(c2.id): c2.name for c2 in characters}
-                                        cname = char_map_local.get(str(cid), str(cid))
-                                        effect = imp.get("effect", imp.get("description", str(imp)))
-                                        lines.extend([f"    角色影响 → {cname}: {effect}"])
-                        else:
-                            lines.extend([f"  [CHOICE] {i}. {c}"])
-                    lines.extend([""])
-
-                if s.foreshadow_ops:
-                    try:
-                        fs_ops = json.loads(s.foreshadow_ops) if isinstance(s.foreshadow_ops, str) else s.foreshadow_ops
-                        if isinstance(fs_ops, list) and fs_ops:
-                            lines.extend(["[FORESHADOW] 伏笔操作:", ""])
-                            fs_map = {str(f.id): f for f in foreshadows}
-                            for op in fs_ops:
-                                if isinstance(op, dict):
-                                    op_type = op.get("op", op.get("op_type", "plant"))
-                                    op_label = {"plant": "埋设", "reinforce": "强化", "reveal": "回收"}.get(op_type, op_type)
-                                    fs_id = op.get("fs_id", op.get("foreshadow_id", ""))
-                                    fs_obj = fs_map.get(str(fs_id))
-                                    fs_name = fs_obj.name if fs_obj else op.get("fs_name", op.get("content", op.get("description", "未命名")))
-                                    fs_code = fs_obj.fs_code if fs_obj else op.get("fs_code", "")
-                                    op_desc = op.get("description", op.get("content", ""))
-
-                                    line = f"  [FORESHADOW] {op_label}: {fs_code} {fs_name}"
-                                    if op_desc:
-                                        line += f" - {op_desc}"
-                                    lines.extend([line])
-
-                                    if fs_obj:
-                                        wrefs = _safe_json_parse(fs_obj.worldview_refs) or []
-                                        crefs = _safe_json_parse(fs_obj.character_refs) or []
-                                        if wrefs:
-                                            lines.extend([f"    世界观关联: {', '.join(str(r) for r in wrefs)}"])
-                                        if crefs:
-                                            char_map_local = {str(c2.id): c2.name for c2 in characters}
-                                            ref_names = [char_map_local.get(str(r), str(r)) for r in crefs]
-                                            lines.extend([f"    角色关联: {', '.join(ref_names)}"])
-                            lines.extend([""])
-                    except Exception:
-                        pass
-
-                causal = _safe_json_parse(s.causal_chain)
-                if causal and isinstance(causal, dict):
-                    has_content = any(causal.get(k) for k in ("precondition", "catalyst", "direct_result", "indirect_result", "long_term_result"))
-                    if has_content:
-                        lines.extend(["[CAUSAL_CHAIN] 因果链:", ""])
-                        if causal.get("precondition"):
-                            lines.extend([f"  前提 → {causal['precondition']}"])
-                        if causal.get("catalyst"):
-                            lines.extend([f"  催化 → {causal['catalyst']}"])
-                        if causal.get("direct_result"):
-                            lines.extend([f"  直接 → {causal['direct_result']}"])
-                        if causal.get("indirect_result"):
-                            lines.extend([f"  间接 → {causal['indirect_result']}"])
-                        if causal.get("long_term_result"):
-                            lines.extend([f"  远期 → {causal['long_term_result']}"])
-                        lines.extend([""])
-
-                lines.extend(["---", ""])
-            yield "\n".join(lines)
-            lines = []
-
-    return StreamingResponse(generate(), media_type="text/markdown")
-
-
-async def _export_text_streaming(project, runtime, chapters, scenes, characters, foreshadows):
-    async def generate():
-        lines = []
-        lines.extend([f"《{project.name}》", ""])
-        if runtime.genre:
-            lines.extend([f"题材: {runtime.genre}", ""])
-
-        world_config = runtime.config.custom_checker_rules.get("world_settings", {}) if runtime.config and runtime.config.custom_checker_rules else {}
-        if world_config:
-            lines.extend(["=== 世界观 ===", ""])
-            for key, val in world_config.items():
-                if val:
-                    lines.append(f"{key}: {val}")
-            lines.append("")
-
-        if characters:
-            lines.extend(["=== 角色 ===", ""])
-            for c in characters:
-                lines.append(f"{c.name}: {c.core_goal or '无动机'}")
-            lines.append("")
-
-        lines.extend(["=== 正文 ===", ""])
-        for ch in chapters:
-            lines.extend([f"第{ch.chapter_number}章 {ch.title or ''}", ""])
-            ch_scenes = [s for s in scenes if str(s.chapter_id) == str(ch.id)]
-            for s in ch_scenes:
-                if s.narration:
-                    lines.append(s.narration)
-                dialogue_text = _format_dialogue(s.dialogue)
-                if dialogue_text:
-                    lines.append(dialogue_text)
-                lines.append("")
-            yield "\n".join(lines)
-            lines = []
-
-    return StreamingResponse(generate(), media_type="text/plain")
+    media_type = "text/markdown" if export_format == "markdown" else "text/plain"
+    return StreamingResponse(generate(), media_type=media_type)
 
 
 def _export_csv(scenes, characters, foreshadows, chapter_map):

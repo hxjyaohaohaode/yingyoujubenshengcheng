@@ -45,6 +45,41 @@ def parse_progress(text: str) -> dict:
         return {"analysis": text}
 
 
+def parse_intent_analysis(text: str) -> dict:
+    try:
+        result = json.loads(text)
+        if isinstance(result, dict):
+            return result
+    except (json.JSONDecodeError, TypeError):
+        pass
+    import re
+    code_block = re.search(r"```json\s*(.*?)\s*```", text, re.DOTALL)
+    if code_block:
+        try:
+            result = json.loads(code_block.group(1))
+            if isinstance(result, dict):
+                return result
+        except (json.JSONDecodeError, TypeError):
+            pass
+    brace_match = re.search(r"\{.*\}", text, re.DOTALL)
+    if brace_match:
+        try:
+            result = json.loads(brace_match.group(0))
+            if isinstance(result, dict):
+                return result
+        except (json.JSONDecodeError, TypeError):
+            pass
+    return {
+        "genre": "",
+        "entities": [],
+        "key_events": [],
+        "confidence": 0.3,
+        "need_search": False,
+        "guiding_questions": [],
+        "raw_text": text,
+    }
+
+
 PLAN_PROJECT_SKILL = Skill()
 PLAN_PROJECT_SKILL.name = "plan_project"
 PLAN_PROJECT_SKILL.intent = "manage.orchestrate"
@@ -127,7 +162,7 @@ INTENT_ANALYSIS_SKILL.prompt_template = """分析用户的剧本创作意图，�
 
 返回JSON：
 {{"genre":"题材","style":"风格","entities":[{{"name":"名称","type":"character/location/event/concept","importance":0.0-1.0}}],"key_events":["事件"],"era":"时代","world_elements":["要素"],"confidence":0.0-1.0,"guiding_questions":[],"need_search":true/false}}"""
-INTENT_ANALYSIS_SKILL.output_parser = lambda text: {"intent": text}
+INTENT_ANALYSIS_SKILL.output_parser = parse_intent_analysis
 
 
 @register_agent

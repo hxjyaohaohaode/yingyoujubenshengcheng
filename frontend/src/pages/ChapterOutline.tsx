@@ -108,11 +108,11 @@ function apiChapterToChapterData(c: Chapter): ChapterData {
     chapter_number: c.chapter_number,
     title: c.title || `第${c.chapter_number}章`,
     summary: c.summary || '',
-    key_turning_points: Array.isArray((c as any).key_turning_points) ? (c as any).key_turning_points : [],
+    key_turning_points: Array.isArray(c.key_turning_points) ? c.key_turning_points.map(String) : [],
     emotion_target: c.emotion_target || 5,
-    focus_characters: Array.isArray((c as any).focus_characters) ? (c as any).focus_characters.map(String) : [],
+    focus_characters: Array.isArray(c.focus_characters) ? c.focus_characters.map(String) : [],
     foreshadow_tasks: Array.isArray(c.foreshadow_tasks) ? c.foreshadow_tasks.map(String) : [],
-    worldview_refs: Array.isArray((c as any).worldview_refs) ? (c as any).worldview_refs.map(String) : [],
+    worldview_refs: Array.isArray(c.worldview_refs) ? c.worldview_refs.map(String) : [],
     status: c.status,
     sections: rawSections.map((s: ChapterSection) => ({
       id: s.id,
@@ -347,7 +347,12 @@ export default function ChapterOutline() {
     const unsubs = [
       eventBus.on(DataEvents.SCENE_UPDATED, () => { fetchChapters() }),
       eventBus.on(DataEvents.CHARACTER_UPDATED, () => { fetchChapters() }),
+      eventBus.on(DataEvents.FORESHADOW_UPDATED, () => { fetchChapters() }),
+      eventBus.on(DataEvents.FORESHADOW_CREATED, () => { fetchChapters() }),
+      eventBus.on(DataEvents.CHAPTER_CREATED, () => { fetchChapters() }),
+      eventBus.on(DataEvents.CHAPTER_UPDATED, () => { fetchChapters() }),
       eventBus.on(DataEvents.PROJECT_SWITCHED, () => { fetchChapters() }),
+      eventBus.on(DataEvents.DATA_SYNC_REQUIRED, () => { fetchChapters() }),
     ]
     return () => unsubs.forEach(u => u())
   }, [fetchChapters])
@@ -361,7 +366,7 @@ export default function ChapterOutline() {
         title: `第${nextNum}章`,
         status: 'draft',
         emotion_target: 5,
-      } as any)
+      } as Partial<Chapter>)
       setChapters(prev => [...prev, {
         id: newChapter.id,
         chapter_number: newChapter.chapter_number,
@@ -415,12 +420,14 @@ export default function ChapterOutline() {
     setSaving(true)
     try {
       await chaptersApi.update(currentProject.id, editData.id, {
-        title: editData.title,
-        summary: editData.summary,
-        emotion_target: editData.emotion_target,
-        foreshadow_tasks: editData.foreshadow_tasks,
-        status: editData.status,
-      } as any)
+          title: editData.title,
+          summary: editData.summary,
+          emotion_target: editData.emotion_target,
+          foreshadow_tasks: editData.foreshadow_tasks,
+          key_turning_points: editData.key_turning_points,
+          worldview_refs: editData.worldview_refs,
+          status: editData.status,
+        } as Partial<Chapter>)
       setChapters(prev => prev.map(c => c.id === editData.id ? editData : c))
       setEditId(null)
       setEditData(null)
@@ -453,8 +460,8 @@ export default function ChapterOutline() {
     setChapters(newChapters)
     try {
       await Promise.all([
-        chaptersApi.update(currentProject.id, a.id, { chapter_number: a.chapter_number } as any),
-        chaptersApi.update(currentProject.id, b.id, { chapter_number: b.chapter_number } as any),
+        chaptersApi.update(currentProject.id, a.id, { chapter_number: a.chapter_number } as Partial<Chapter>),
+          chaptersApi.update(currentProject.id, b.id, { chapter_number: b.chapter_number } as Partial<Chapter>),
       ])
     } catch {
       notification.warning({ message: '排序更新失败', description: '章节排序未能保存到服务器', placement: 'topRight' })
@@ -653,13 +660,13 @@ export default function ChapterOutline() {
                         {totalForeshadow > 0 && (
                           <>
                             {foreshadowStats.plant > 0 && (
-                              <Tag style={{ fontSize: 11 }}>埋设埋设 ×{foreshadowStats.plant}</Tag>
+                              <Tag style={{ fontSize: 11 }}>🌱 埋设 ×{foreshadowStats.plant}</Tag>
                             )}
                             {foreshadowStats.reinforce > 0 && (
-                              <Tag color="blue" style={{ fontSize: 11 }}>强化强化 ×{foreshadowStats.reinforce}</Tag>
+                              <Tag color="blue" style={{ fontSize: 11 }}>🔄 强化 ×{foreshadowStats.reinforce}</Tag>
                             )}
                             {foreshadowStats.reveal > 0 && (
-                              <Tag color="gold" style={{ fontSize: 11 }}>[提示]回收 ×{foreshadowStats.reveal}</Tag>
+                              <Tag color="gold" style={{ fontSize: 11 }}>✨ 回收 ×{foreshadowStats.reveal}</Tag>
                             )}
                           </>
                         )}

@@ -134,10 +134,6 @@ COST_PROFILE_STR_MAP = {
 }
 
 
-def resolve_cost_profile(profile_str: str) -> CostProfile:
-    return COST_PROFILE_STR_MAP.get(profile_str, CostProfile.BALANCED)
-
-
 class ModelRouter:
     """根据意图和成本策略选择模型"""
 

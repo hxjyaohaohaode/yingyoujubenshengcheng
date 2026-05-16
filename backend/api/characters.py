@@ -11,6 +11,7 @@ from schemas.character import (
     CharacterCreate, CharacterUpdate, CharacterResponse,
     RelationCreate, RelationUpdate, RelationResponse,
 )
+from utils.data_sync import notify_data_changed as _notify_data_changed
 
 router = APIRouter()
 
@@ -34,6 +35,7 @@ async def create_character(
         await ws_manager.send_character_created(str(project_id), str(character.id))
     except Exception:
         pass
+    await _notify_data_changed(str(project_id), "character_updated")
     return character
 
 
@@ -93,6 +95,7 @@ async def update_character(
         await ws_manager.send_character_updated(str(project_id), str(character.id))
     except Exception:
         pass
+    await _notify_data_changed(str(project_id), "character_updated")
     return character
 
 
@@ -124,6 +127,7 @@ async def delete_character(
         await ws_manager.send_character_deleted(str(project_id), str(character_id))
     except Exception:
         pass
+    await _notify_data_changed(str(project_id), "character_updated")
 
 
 @router.get("/projects/{project_id}/relations", response_model=list[RelationResponse])

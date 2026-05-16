@@ -22,7 +22,6 @@ import { useTaskProgress } from '../hooks/useTaskProgress'
 import NarrationRenderer from '../components/NarrationRenderer'
 import ConfirmDialog from '../components/ConfirmDialog'
 import EmotionChart from '../components/EmotionChart'
-import ForeshadowTag from '../components/ForeshadowTag'
 import NarrativeMemoryPanel from '../components/NarrativeMemoryPanel'
 import type { Scene, Chapter, Character } from '../api/client'
 
@@ -120,7 +119,7 @@ const SCENE_TYPE_LABELS: Record<string, string> = {
   dialogue: '对白', action: '动作', exploration: '探索', puzzle: '解谜', cutscene: '过场', branch: '分支',
 }
 const SCENE_STATUS_ICON: Record<string, { icon: React.ReactNode; color: string; label: string }> = {
-  draft: { icon: <EditOutlined />, color: '#d9d9d9', label: '待创作' },
+  draft: { icon: <EditOutlined />, color: '#d9d9d9', label: '待创建' },
   in_review: { icon: <AuditOutlined />, color: '#3b82f6', label: '审核中' },
   auditing: { icon: <AuditOutlined />, color: '#3b82f6', label: '审核中' },
   rejected: { icon: <CloseCircleOutlined />, color: '#ef4444', label: '审计未通过' },
@@ -156,11 +155,11 @@ function mapApiSceneToSceneData(scene: Scene, chapterId: string): SceneData {
   const causalChain: CausalChain =
     scene.causal_chain && typeof scene.causal_chain === 'object'
       ? {
-          precondition: (scene.causal_chain as any).precondition || '',
-          catalyst: (scene.causal_chain as any).catalyst || '',
-          direct_result: (scene.causal_chain as any).direct_result || '',
-          indirect_result: (scene.causal_chain as any).indirect_result || '',
-          long_term_result: (scene.causal_chain as any).long_term_result || '',
+          precondition: (scene.causal_chain as CausalChain).precondition || '',
+          catalyst: (scene.causal_chain as CausalChain).catalyst || '',
+          direct_result: (scene.causal_chain as CausalChain).direct_result || '',
+          indirect_result: (scene.causal_chain as CausalChain).indirect_result || '',
+          long_term_result: (scene.causal_chain as CausalChain).long_term_result || '',
         }
       : { precondition: '', catalyst: '', direct_result: '', indirect_result: '', long_term_result: '' }
 
@@ -331,7 +330,7 @@ export default function SceneWorkshop() {
     return sortedChapters.map(ch => ({
       chapter_id: ch.id,
       chapter_number: ch.chapter_number,
-      title: ch.title || `第${ch.chapter_number}章`,
+      title: ch.title || `第{ch.chapter_number}章`,
       scenes: (sceneMap.get(ch.id) || []).map(s => mapApiSceneToSceneData(s, ch.id)),
     }))
   }, [sortedChapters, scenes])
@@ -747,7 +746,7 @@ export default function SceneWorkshop() {
     (idx: number, key: keyof DialogueLine, val: string) => {
       const arr = [...(editScene?.dialogue || [])]
       if (idx < 0 || idx >= arr.length) return
-      ;(arr[idx] as any)[key] = val
+      arr[idx] = { ...arr[idx], [key]: val }
       updateField('dialogue', arr)
     },
     [editScene, updateField],
@@ -802,10 +801,10 @@ export default function SceneWorkshop() {
   )
 
   const updateChoice = useCallback(
-    (idx: number, key: keyof ChoiceOption, val: any) => {
+    (idx: number, key: keyof ChoiceOption, val: string | boolean) => {
       const arr = [...(editScene?.choices || [])]
       if (idx < 0 || idx >= arr.length) return
-      ;(arr[idx] as any)[key] = val
+      arr[idx] = { ...arr[idx], [key]: val } as ChoiceOption
       updateField('choices', arr)
     },
     [editScene, updateField],
@@ -830,10 +829,10 @@ export default function SceneWorkshop() {
   )
 
   const updateForeshadowOp = useCallback(
-    (idx: number, key: keyof ForeshadowOp, val: any) => {
+    (idx: number, key: keyof ForeshadowOp, val: string | boolean) => {
       const arr = [...(editScene?.foreshadow_ops || [])]
       if (idx < 0 || idx >= arr.length) return
-      ;(arr[idx] as any)[key] = val
+      arr[idx] = { ...arr[idx], [key]: val } as ForeshadowOp
       updateField('foreshadow_ops', arr)
     },
     [editScene, updateField],
@@ -971,12 +970,12 @@ export default function SceneWorkshop() {
                   scene_code: newSceneForm.scene_code,
                   chapter_id: newSceneForm.chapter_id,
                   scene_type: newSceneForm.scene_type,
-                  location: newSceneForm.location || undefined,
-                  weather: newSceneForm.weather || undefined,
+                  location: newSceneForm.location || null,
+                  weather: newSceneForm.weather || null,
                   emotion_level: newSceneForm.emotion_level,
                   characters_involved: newSceneForm.characters_involved,
                   status: 'draft',
-                } as any)
+                } as Partial<Scene>)
                 await refetchScenes()
                 setSelectedSceneId(newScene.id)
                 setCreateModalOpen(false)
@@ -996,7 +995,7 @@ export default function SceneWorkshop() {
           >
             <Space direction="vertical" className="w-full" size="middle">
               <div>
-                <div className="text-xs text-gray-500 mb-1">所属章节 <span className="text-red-400">*</span></div>
+                <div className="text-xs text-gray-500 mb-1">所属章节<span className="text-red-400">*</span></div>
                 <Select
                   className="w-full"
                   placeholder="选择章节"
@@ -1009,7 +1008,7 @@ export default function SceneWorkshop() {
                     setNewSceneForm(prev => ({ ...prev, chapter_id: val, scene_code: nextCode }))
                   }}
                   options={chaptersData.map(ch => ({
-                    label: `第${ch.chapter_number}章 ${ch.title || '未命名'}（${ch.scenes.length}个场景）`,
+                    label: `第{ch.chapter_number}章${ch.title || '未命名'}（{ch.scenes.length}个场景）`,
                     value: ch.chapter_id,
                   }))}
                 />
@@ -1020,7 +1019,7 @@ export default function SceneWorkshop() {
                   <Input
                     value={newSceneForm.scene_code}
                     onChange={e => setNewSceneForm(prev => ({ ...prev, scene_code: e.target.value }))}
-                    placeholder="如 CH01-S01"
+                    placeholder="如CH01-S01"
                   />
                 </Col>
                 <Col span={12}>
@@ -1045,7 +1044,7 @@ export default function SceneWorkshop() {
                 <Col span={12}>
                   <div className="text-xs text-gray-500 mb-1">天气</div>
                   <Input
-                    placeholder="如：暴雨、晴夜"
+                    placeholder="如：暴雨、晴天"
                     value={newSceneForm.weather}
                     onChange={e => setNewSceneForm(prev => ({ ...prev, weather: e.target.value }))}
                   />
@@ -1070,7 +1069,7 @@ export default function SceneWorkshop() {
                   value={newSceneForm.characters_involved}
                   onChange={val => setNewSceneForm(prev => ({ ...prev, characters_involved: val }))}
                   options={characters.map(c => ({
-                    label: `${c.name}（${c.role_type || '未分类'}）`,
+                    label: `${c.name}（{c.role_type || '未分类'}）`,
                     value: c.id,
                   }))}
                   notFoundContent={characters.length === 0 ? '暂无角色，请先在角色管理中添加' : '无匹配角色'}
@@ -1227,7 +1226,7 @@ export default function SceneWorkshop() {
                     {editScene.status === 'final'
                       ? '已定稿'
                       : editScene.status === 'rejected'
-                        ? '已封驳'
+                        ? '已封存'
                         : editScene.status === 'in_review'
                           ? '审计中'
                           : editScene.status === 'passed'
@@ -1249,14 +1248,14 @@ export default function SceneWorkshop() {
                       {sceneChapter.core_conflict && (
                         <>
                           <span className="text-gray-300">|</span>
-                          <span className="text-gray-500">冲突：</span>
+                          <span className="text-gray-500">冲突度</span>
                           <span className="text-gray-700 dark:text-gray-300">{sceneChapter.core_conflict}</span>
                         </>
                       )}
                       {sceneChapter.emotion_target != null && (
                         <>
                           <span className="text-gray-300">|</span>
-                          <span className="text-gray-500">情感目标：</span>
+                          <span className="text-gray-500">情感目标值</span>
                           <span>{sceneChapter.emotion_target}/10</span>
                         </>
                       )}
@@ -1265,7 +1264,7 @@ export default function SceneWorkshop() {
                           <span className="text-gray-300">|</span>
                           <span className="text-gray-500">转折点：</span>
                           <span className="text-amber-600 dark:text-amber-400">
-                            {sceneChapter.key_turning_points.map((tp: any) => typeof tp === 'string' ? tp : tp?.description || '').filter(Boolean).join(' → ')}
+                            {sceneChapter.key_turning_points.map((tp: any) => typeof tp === 'string' ? tp : tp?.description || '').filter(Boolean).join('、')}
                           </span>
                         </>
                       )}
@@ -1333,7 +1332,7 @@ export default function SceneWorkshop() {
                                 className="text-[10px] text-gray-300 hover:text-gray-500 cursor-pointer border-none bg-transparent"
                                 onClick={() => moveDialogue(i, Math.max(0, i - 1))}
                               >
-                                ▲
+                                ↑
                               </button>
                               <button
                                 className="text-[10px] text-gray-300 hover:text-gray-500 cursor-pointer border-none bg-transparent"
@@ -1341,7 +1340,7 @@ export default function SceneWorkshop() {
                                   moveDialogue(i, Math.min(editScene.dialogue.length - 1, i + 1))
                                 }
                               >
-                                ▼
+                                ↓
                               </button>
                             </div>
                             <Select
@@ -1592,7 +1591,7 @@ export default function SceneWorkshop() {
                 <Space direction="vertical" className="w-full" size="small">
                   <div className="flex items-center gap-2">
                     <Input
-                      placeholder="额外要求（可选）：如武侠风、情感更激烈、角色对话更犀利..."
+                      placeholder="额外要求（可选）：如武侠风、情感更激烈、角色对话更犀利.."
                       value={genRequirements}
                       onChange={e => setGenRequirements(e.target.value)}
                       size="small"
@@ -1763,7 +1762,7 @@ export default function SceneWorkshop() {
                         <div className="space-y-3">
                           <div>
                             <div className="text-xs text-gray-400 font-semibold mb-1">
-                              程序化检测
+                              程序化检查
                             </div>
                             <div className="grid grid-cols-2 gap-1">
                               {(latestAudit.checker_results || []).map((c, i) => (
@@ -1862,9 +1861,9 @@ export default function SceneWorkshop() {
         onCancel={() => setShowRejectModal(false)}
       >
         <div className="space-y-2 text-sm">
-          <p className="font-semibold">场景多次审计未通过，建议人工介入修改。</p>
-          <p className="text-gray-500">请查看该场景的审核报告了解具体原因。</p>
-          <p className="text-gray-400 text-xs">建议重新审视场景的整体结构后再次提交。</p>
+          <p className="font-semibold">场景多次审计未通过，建议人工介入修改</p>
+          <p className="text-gray-500">请查看该场景的审核报告了解具体原因</p>
+          <p className="text-gray-400 text-xs">建议重新审视场景的整体结构后再次提交</p>
         </div>
       </Modal>
 
@@ -1902,6 +1901,7 @@ export default function SceneWorkshop() {
                       if (v.content.characters_involved) restored.characters_involved = v.content.characters_involved
                     }
                     setEditScene(restored)
+                    markUnsaved()
                     notification.info({ message: `已恢复到 v${v.version}`, description: '内容已填入编辑区，请保存确认', placement: 'topRight' })
                   }}>
                     恢复

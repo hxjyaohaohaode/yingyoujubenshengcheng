@@ -5,6 +5,7 @@ Pipeline API 路由: 流程状态查询、自动运行与模板查询。
 
 import logging
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Body
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db, async_session_factory
@@ -14,6 +15,54 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/projects/{project_id}/pipeline")
 public_router = APIRouter(prefix="/pipeline")
+
+
+async def _inject_project_config(
+    db: AsyncSession, project_id: str, sm: PipelineStateMachine
+) -> dict:
+    from core.storage.service import StorageService
+
+    config_data: dict = {}
+    try:
+        storage = StorageService(db)
+        config = await storage.get_project_config(project_id)
+        if config:
+            def _s(key: str, default: object = "") -> object:
+                v = config.get(key, default)
+                return v if v is not None else default
+
+            chapter_count = _s("chapter_count")
+            character_count = _s("character_count", 6)
+
+            config_data = {
+                "genre": _s("genre"),
+                "style": _s("style") or _s("writing_style"),
+                "core_contradiction": _s("core_contradiction"),
+                "target_word_count": _s("target_word_count", 50000),
+                "chapter_count": chapter_count if chapter_count is not None and chapter_count != "" else None,
+                "world_building_depth": _s("world_building_depth", 5),
+                "character_depth_target": _s("character_depth_target", 5),
+                "character_count": character_count,
+                "character_dynamic_count": max(15, min(70, int(character_count) * 3)),
+                "plot_complexity": _s("plot_complexity", 5),
+                "min_words_per_chapter": _s("min_words_per_chapter", 2000),
+                "max_words_per_chapter": _s("max_words_per_chapter", 8000),
+                "scenes_per_chapter_min": _s("scenes_per_chapter_min", 3),
+                "scenes_per_chapter_max": _s("scenes_per_chapter_max", 6),
+                "core_truth": _s("core_contradiction"),
+                "theme": _s("theme"),
+                "tone": _s("tone", "neutral"),
+                "user_requirements": _s("description"),
+                "target_ending_count": _s("target_ending_count", 3),
+                "max_branch_depth": _s("max_branch_depth", 3),
+                "wow_moment_density": _s("wow_moment_density", 2.0),
+            }
+            for key, val in config_data.items():
+                if val is not None:
+                    await sm.update_result_data(project_id, key, val)
+    except Exception as e:
+        logger.warning("注入项目配置到流水线失败: %s", e)
+    return config_data
 
 
 async def _get_executor(project_id: str, db: AsyncSession, target_phases: list[str] | None = None):
@@ -66,7 +115,7 @@ async def auto_run_pipeline(project_id: str, background_tasks: BackgroundTasks,
     rerun_mode = "fresh"
     if state and state.status in (PipelineStatus.FAILED, PipelineStatus.COMPLETED, PipelineStatus.CANCELLED):
         chars_result = await db.execute(
-            __import__("sqlalchemy").text("SELECT COUNT(*) FROM characters WHERE project_id = :pid"),
+            text("SELECT COUNT(*) FROM characters WHERE project_id = :pid"),
             {"pid": project_id},
         )
         has_content = int(chars_result.scalar() or 0) > 0
@@ -89,39 +138,7 @@ async def auto_run_pipeline(project_id: str, background_tasks: BackgroundTasks,
         template = get_template(default_template)
         await sm.init(project_id, default_template)
 
-        config_data = {}
-        try:
-            from core.storage.service import StorageService
-            storage = StorageService(db)
-            config = await storage.get_project_config(project_id)
-            if config:
-                def _s(key, default=""):
-                    v = config.get(key, default)
-                    return v if v is not None else default
-                config_data = {
-                    "genre": _s("genre"),
-                    "style": _s("style") or _s("writing_style"),
-                    "core_contradiction": _s("core_contradiction"),
-                    "target_word_count": _s("target_word_count", 50000),
-                    "chapter_count": _s("chapter_count", 10),
-                    "world_building_depth": _s("world_building_depth", 5),
-                    "character_depth_target": _s("character_depth_target", 5),
-                    "character_count": _s("character_count", 6),
-                    "character_dynamic_count": max(15, min(70, int(_s("target_word_count", 50000)) / 5000)),
-                    "plot_complexity": _s("plot_complexity", 5),
-                    "min_words_per_chapter": _s("min_words_per_chapter", 2000),
-                    "max_words_per_chapter": _s("max_words_per_chapter", 8000),
-                    "scenes_per_chapter_min": _s("scenes_per_chapter_min", 3),
-                    "scenes_per_chapter_max": _s("scenes_per_chapter_max", 6),
-                    "core_truth": _s("core_contradiction"),
-                    "theme": _s("theme"),
-                    "tone": _s("tone", "neutral"),
-                    "user_requirements": _s("description"),
-                }
-                for key, val in config_data.items():
-                    await sm.update_result_data(project_id, key, val)
-        except Exception as e:
-            logger.warning("注入项目配置到流水线失败: %s", e)
+        config_data = await _inject_project_config(db, project_id, sm)
 
         await sm.transition(project_id, PipelineStatus.RUNNING)
 
@@ -323,38 +340,7 @@ async def generate_script(project_id: str, payload: dict | None = Body(default=N
     template = get_template("interactive_drama")
     await sm.init(project_id, "interactive_drama")
 
-    config_data = {}
-    try:
-        storage = StorageService(db)
-        config = await storage.get_project_config(project_id)
-        if config:
-            def _s(key, default=""):
-                v = config.get(key, default)
-                return v if v is not None else default
-            config_data = {
-                "genre": _s("genre"),
-                "style": _s("style") or _s("writing_style"),
-                "core_contradiction": _s("core_contradiction"),
-                "target_word_count": _s("target_word_count", 50000),
-                "chapter_count": _s("chapter_count", 10),
-                "world_building_depth": _s("world_building_depth", 5),
-                "character_depth_target": _s("character_depth_target", 5),
-                "character_count": _s("character_count", 6),
-                "character_dynamic_count": max(15, min(70, int(_s("target_word_count", 50000)) / 5000)),
-                "plot_complexity": _s("plot_complexity", 5),
-                "min_words_per_chapter": _s("min_words_per_chapter", 2000),
-                "max_words_per_chapter": _s("max_words_per_chapter", 8000),
-                "scenes_per_chapter_min": _s("scenes_per_chapter_min", 3),
-                "scenes_per_chapter_max": _s("scenes_per_chapter_max", 6),
-                "core_truth": _s("core_contradiction"),
-                "theme": _s("theme"),
-                "tone": _s("tone", "neutral"),
-                "user_requirements": _s("description"),
-            }
-            for key, val in config_data.items():
-                await sm.update_result_data(project_id, key, val)
-    except Exception as e:
-        logger.warning("注入项目配置失败: %s", e)
+    config_data = await _inject_project_config(db, project_id, sm)
 
     await sm.transition(project_id, PipelineStatus.RUNNING)
 

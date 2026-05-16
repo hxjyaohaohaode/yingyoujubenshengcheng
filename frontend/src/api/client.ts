@@ -221,7 +221,6 @@ export interface ForeshadowRelation {
   from_fs_id: string
   to_fs_id: string
   relation_type: string
-  description?: string
   created_at: string
 }
 

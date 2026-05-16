@@ -262,7 +262,7 @@ class MaterialAgent(BaseAgent):
 
         ch_id = str(target_chapter.get("id", ""))
         if ch_id:
-            p4_content, p4_chars = await self._build_chapter_context(ch_id)
+            p4_content, p4_chars = await self._build_chapter_context(project_id, ch_id)
             sections.append({"name": "章节上下文", "content": p4_content, "priority": 4})
             total_chars += p4_chars
 
@@ -319,7 +319,7 @@ class MaterialAgent(BaseAgent):
                 total_chars += p3_chars
 
                 if chapter_id:
-                    p4_content, p4_chars = await self._build_chapter_context(chapter_id)
+                    p4_content, p4_chars = await self._build_chapter_context(project_id, chapter_id)
                     sections.append({"name": "Layer 4 - 章节上下文", "content": p4_content, "priority": 4})
                     total_chars += p4_chars
 
@@ -453,8 +453,8 @@ class MaterialAgent(BaseAgent):
         content = "\n".join(lines) or "(无角色数据)"
         return content, len(content)
 
-    async def _build_chapter_context(self, chapter_id) -> tuple[str, int]:
-        ctx = await self.storage.get_chapter_context("", chapter_id)
+    async def _build_chapter_context(self, project_id: str, chapter_id: str) -> tuple[str, int]:
+        ctx = await self.storage.get_chapter_context(project_id, chapter_id)
         if ctx and ctx.get("chapter"):
             ch = ctx["chapter"]
             content = f"第{ch.get('chapter_number', '?')}章: {ch.get('title', '')}\n摘要: {ch.get('summary', '')}\n情感目标: {ch.get('emotion_target', 5)}/10"

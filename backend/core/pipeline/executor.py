@@ -13,6 +13,8 @@ from datetime import UTC, datetime
 from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
+from utils.json_parser import parse_llm_json
+from sqlalchemy import text as sa_text
 
 from core.gateway.client import ModelGateway
 from core.rag.retriever import RAGRetriever
@@ -177,6 +179,21 @@ class PipelineExecutor:
                             break
                     next_step = scene_writer_idx if scene_writer_idx is not None else 0
                     await self.state_machine.set_step(project_id, state.current_phase_index, next_step)
+                    try:
+                        chapters = await self.storage.get_chapter_outlines(project_id)
+                        cfg = await self.storage.get_project_config(project_id) or {}
+                        scenes_per_chapter_min = cfg.get("scenes_per_chapter_min", 3)
+                        next_ch_idx = 0
+                        for ch_idx, ch in enumerate(chapters):
+                            ch_id = str(ch.get("id", ""))
+                            ch_scenes = await self.storage.get_scenes_by_chapter(project_id, ch_id)
+                            has_unfinalized = any(s.get("status") != "finalized" for s in ch_scenes)
+                            if has_unfinalized or len(ch_scenes) < scenes_per_chapter_min:
+                                next_ch_idx = ch_idx
+                                break
+                        await self.state_machine.update_result_data(project_id, "current_chapter_index", next_ch_idx)
+                    except Exception as e:
+                        logger.warning("更新current_chapter_index失败: %s", e)
                     await self._notify_progress(
                         project_id, phase.name, next_step, len(phase.steps),
                         "系统", "", "running",
@@ -330,11 +347,13 @@ class PipelineExecutor:
             for ch in chapters:
                 ch_id = str(ch.get("id", ""))
                 scenes = await self.storage.get_scenes_by_chapter(project_id, ch_id)
+                draft_scenes = [s for s in scenes if s.get("status") != "finalized"]
+                finalized_scenes = [s for s in scenes if s.get("status") == "finalized"]
                 scene_count = len(scenes)
                 total_scenes_needed += scenes_per_chapter_max
                 total_scenes_written += scene_count
 
-                if scene_count < scenes_per_chapter_min:
+                if len(finalized_scenes) < scenes_per_chapter_min:
                     chapters_with_insufficient_scenes += 1
 
                 for sc in scenes:
@@ -454,10 +473,36 @@ class PipelineExecutor:
                         await self.state_machine.update_result_data(
                             project_id, "audit_fix_instructions", fix_instructions
                         )
+                        prev_data["revision_mode"] = True
+                        prev_data["existing_scene_content"] = result.get("data", {})
+                        await self.state_machine.update_result_data(
+                            project_id, "revision_mode", True
+                        )
+                        await self.state_machine.update_result_data(
+                            project_id, "existing_scene_content", result.get("data", {})
+                        )
                         continue
                     else:
                         logger.warning("场景审计失败已达最大重试次数(%d)", MAX_AUDIT_RETRIES)
                         return result
+
+            if step.skill in ("scene_writer", "component_writer", "chapter_writer", "novel_writer") and result.get("data"):
+                scene_id = result["data"].get("scene_id", "")
+                if scene_id:
+                    try:
+                        await self.db.execute(
+                            sa_text("UPDATE scenes SET status = 'finalized' WHERE id = :sid"),
+                            {"sid": scene_id},
+                        )
+                        await self.db.commit()
+                        await self._notify_data_changed(project_id, "scene_finalized",
+                                                         {"entity_id": scene_id})
+                    except Exception as e:
+                        logger.warning("标记场景finalized失败: %s", e)
+
+            await self.state_machine.update_result_data(project_id, "revision_mode", False)
+            await self.state_machine.update_result_data(project_id, "existing_scene_content", {})
+            await self.state_machine.update_result_data(project_id, "audit_fix_instructions", "")
 
             return result
 
@@ -530,7 +575,7 @@ class PipelineExecutor:
             now_expr = "datetime('now')" if _IS_SQLITE else "NOW()"
 
             await self.db.execute(
-                __import__("sqlalchemy").text(
+                sa_text(
                     f"""INSERT INTO audit_records
                     (id, project_id, scene_id, audit_type, checker_results,
                      llm_results, creative_scores, overall_result, issues, suggestions, created_at)
@@ -557,7 +602,7 @@ class PipelineExecutor:
 
     async def _db_keepalive(self):
         try:
-            await self.db.execute(__import__("sqlalchemy").text("SELECT 1"))
+            await self.db.execute(sa_text("SELECT 1"))
         except Exception as e:
             logger.warning("数据库保活检测失败: %s", e)
 
@@ -1045,7 +1090,7 @@ class PipelineExecutor:
             if skill == "world_builder":
                 pre_parsed = data.get("world_parsed")
                 text = data.get("world_setting", "")
-                parsed = pre_parsed if isinstance(pre_parsed, dict) else self._extract_json(text)
+                parsed = pre_parsed if isinstance(pre_parsed, dict) else parse_llm_json(text)
                 if parsed and isinstance(parsed, dict):
                     cc_value = parsed.pop("core_contradiction", None)
                     await self.storage.clear_world_config(project_id)
@@ -1075,7 +1120,7 @@ class PipelineExecutor:
 
             elif skill == "character_designer":
                 text = data.get("characters", "")
-                parsed = self._extract_json(text)
+                parsed = parse_llm_json(text)
                 chars = None
                 if isinstance(parsed, list):
                     chars = parsed
@@ -1120,7 +1165,7 @@ class PipelineExecutor:
                 elif isinstance(fs_raw, dict):
                     fs_list = fs_raw.get("foreshadows", fs_raw.get("伏笔", []))
                 elif isinstance(fs_raw, str) and len(fs_raw) > 10:
-                    parsed = self._extract_json(fs_raw)
+                    parsed = parse_llm_json(fs_raw)
                     if isinstance(parsed, list):
                         fs_list = parsed
                     elif isinstance(parsed, dict):
@@ -1164,7 +1209,7 @@ class PipelineExecutor:
 
             elif skill in ("outline_writer", "chapter_outliner"):
                 text = data.get("outline", data.get("chapters", data.get("outlines", "")))
-                parsed = self._extract_json(text)
+                parsed = parse_llm_json(text)
                 ch_list = None
                 if isinstance(parsed, list):
                     ch_list = parsed
@@ -1210,7 +1255,7 @@ class PipelineExecutor:
 
             elif skill == "relation_network_designer":
                 text = data.get("relations", "")
-                parsed = self._extract_json(text)
+                parsed = parse_llm_json(text)
                 rel_list = None
                 if isinstance(parsed, list):
                     rel_list = parsed
@@ -1234,7 +1279,7 @@ class PipelineExecutor:
                     logger.warning("relation_network_designer 未生成有效关系数据，尝试直接从原始文本提取")
                     raw_text = str(text) if text else ""
                     if len(raw_text) > 50:
-                        repaired = self._repair_truncated_json(raw_text)
+                        repaired = parse_llm_json(raw_text)
                         if repaired is not None:
                             if isinstance(repaired, list):
                                 rel_list = repaired
@@ -1430,11 +1475,21 @@ class PipelineExecutor:
             if not chapters:
                 return
             await self.storage.clear_emotion_curves(project_id)
-            for chapter in chapters:
+
+            wow_density = 2.0
+            try:
+                st = await self.state_machine.get_state(project_id)
+                if st and st.result_data:
+                    wow_density = st.result_data.get("wow_moment_density", 2.0)
+            except Exception:
+                pass
+
+            wow_types = ["reversal", "revelation", "sacrifice", "triumph", "betrayal"]
+            for ch_idx, chapter in enumerate(chapters):
                 ch_num = chapter.get("chapter_number", 0)
                 ch_title = chapter.get("title", "")
                 emotion_val = chapter.get("emotion_target", 5)
-                await self.storage.create_emotion_curve(project_id, {
+                curve_data = {
                     "chapter_number": ch_num,
                     "section_number": 0,
                     "emotion_value": emotion_val,
@@ -1442,7 +1497,16 @@ class PipelineExecutor:
                     "event_description": chapter.get("core_conflict", chapter.get("summary", "")),
                     "conflict_level": 5,
                     "scene_count": 1,
-                })
+                }
+                if wow_density and wow_density > 0:
+                    num_wow = max(1, round(wow_density))
+                    wow_type = wow_types[ch_idx % len(wow_types)]
+                    curve_data["wow_moment"] = {
+                        "type": wow_type,
+                        "description": f"第{ch_idx+1}章爽点",
+                        "intensity": min(1.0, 0.5 + wow_density * 0.15),
+                    }
+                await self.storage.create_emotion_curve(project_id, curve_data)
             await self._notify_data_changed(project_id, "emotion_curve_created", {"chapters_processed": len(chapters)})
             logger.info("情感曲线自动填充完成: 项目=%s, 章节数=%d", project_id, len(chapters))
         except Exception as e:
@@ -1468,7 +1532,7 @@ class PipelineExecutor:
                     continue
 
                 existing_result = await self.db.execute(
-                    __import__("sqlalchemy").text(
+                    sa_text(
                         "SELECT section_number FROM chapter_sections WHERE chapter_id = :chid"
                     ),
                     {"chid": chapter_id},
@@ -1485,7 +1549,7 @@ class PipelineExecutor:
                     sec_id = str(uuid_mod.uuid4())
                     choices_data = sec.get("choices", [])
                     await self.db.execute(
-                        __import__("sqlalchemy").text(
+                        sa_text(
                             """INSERT INTO chapter_sections
                             (id, project_id, chapter_id, section_number, title, word_target,
                              emotion_target, scene_ids, choices, foreshadow_tasks,
@@ -1518,7 +1582,7 @@ class PipelineExecutor:
                             choice_id = str(uuid_mod.uuid4())
                             char_impact = ch_item.get("character_impact", [])
                             await self.db.execute(
-                                __import__("sqlalchemy").text(
+                                sa_text(
                                     """INSERT INTO choice_designs
                                     (id, project_id, section_id, choice_number, text,
                                      consequence_direct, consequence_indirect, consequence_long_term,
@@ -1559,14 +1623,14 @@ class PipelineExecutor:
         try:
             choices_data = data.get("choices", data.get("choice_designs", []))
             if isinstance(choices_data, str):
-                choices_data = self._extract_json(choices_data)
+                choices_data = parse_llm_json(choices_data)
             if not isinstance(choices_data, list) or not choices_data:
                 logger.warning("choice_designer 未生成有效选择数据")
                 raise RuntimeError("choice_designer 未生成有效选择数据，无法继续流水线")
 
             sections_in_db = {}
             sec_result = await self.db.execute(
-                __import__("sqlalchemy").text(
+                sa_text(
                     "SELECT id, chapter_id, section_number FROM chapter_sections WHERE project_id = :pid"
                 ),
                 {"pid": project_id},
@@ -1593,7 +1657,7 @@ class PipelineExecutor:
                     continue
 
                 existing_choice = await self.db.execute(
-                    __import__("sqlalchemy").text(
+                    sa_text(
                         "SELECT id FROM choice_designs WHERE section_id = :sid AND choice_number = :cnum"
                     ),
                     {"sid": section_id, "cnum": choice.get("choice_number", 1)},
@@ -1604,7 +1668,7 @@ class PipelineExecutor:
                 choice_id = str(uuid_mod.uuid4())
                 char_impact = choice.get("character_impact", [])
                 await self.db.execute(
-                    __import__("sqlalchemy").text(
+                    sa_text(
                         """INSERT INTO choice_designs
                         (id, project_id, section_id, choice_number, text,
                          consequence_direct, consequence_indirect, consequence_long_term,
@@ -1695,9 +1759,17 @@ class PipelineExecutor:
                     }
                     await self.storage.save_scene_draft(scene_id, content)
 
+                    audit_passed = state.result_data.get("last_audit_result", {}).get("overall") == "pass" if state else False
+                    if audit_passed:
+                        await self.db.execute(
+                            sa_text("UPDATE scenes SET status = 'finalized' WHERE id = :sid"),
+                            {"sid": scene_id},
+                        )
+                        await self.db.commit()
+
                     if emotion_level:
                         await self.db.execute(
-                            __import__("sqlalchemy").text(
+                            sa_text(
                                 "UPDATE scenes SET emotion_level = :el WHERE id = :sid"
                             ),
                             {"el": emotion_level, "sid": scene_id},
@@ -1706,7 +1778,7 @@ class PipelineExecutor:
 
                     if characters_involved:
                         await self.db.execute(
-                            __import__("sqlalchemy").text(
+                            sa_text(
                                 "UPDATE scenes SET characters_involved = :ci WHERE id = :sid"
                             ),
                             {"ci": json.dumps(characters_involved, ensure_ascii=False), "sid": scene_id},
@@ -1776,7 +1848,7 @@ class PipelineExecutor:
 
             new_scene_id = str(uuid_mod.uuid4())
             await self.db.execute(
-                __import__("sqlalchemy").text(
+                sa_text(
                     """
                     INSERT INTO scenes (id, project_id, chapter_id, scene_code, scene_type,
                         location, weather, narration, dialogue, actions, foreshadow_ops,
@@ -1945,152 +2017,6 @@ class PipelineExecutor:
         except Exception:
             pass
 
-    def _extract_json(self, text) -> dict | list | None:
-        if not text or not isinstance(text, str):
-            return text if isinstance(text, (dict, list)) else None
-        text = text.strip()
-        if text.startswith("```json"):
-            text = text[7:]
-        elif text.startswith("```"):
-            text = text[3:]
-        if text.endswith("```"):
-            text = text[:-3]
-        text = text.strip()
-        try:
-            return json.loads(text)
-        except json.JSONDecodeError:
-            pass
-        try:
-            start = text.find("{")
-            if start == -1:
-                start = text.find("[")
-            if start >= 0:
-                end = text.rfind("}") + 1
-                if text[start] == "[":
-                    end = text.rfind("]") + 1
-                if end > start:
-                    return json.loads(text[start:end])
-        except json.JSONDecodeError:
-            pass
-        repaired = self._repair_truncated_json(text)
-        if repaired is not None:
-            return repaired
-        return None
-
-    def _repair_truncated_json(self, text: str) -> dict | list | None:
-        if not text:
-            return None
-        start_obj = text.find("{")
-        start_arr = text.find("[")
-        if start_obj == -1 and start_arr == -1:
-            return None
-        is_array = False
-        start = -1
-        if start_obj == -1:
-            start = start_arr
-            is_array = True
-        elif start_arr == -1:
-            start = start_obj
-        elif start_arr < start_obj:
-            start = start_arr
-            is_array = True
-        else:
-            start = start_obj
-        fragment = text[start:]
-        if is_array:
-            last_complete_obj_end = -1
-            depth = 0
-            for i, ch in enumerate(fragment):
-                if ch == "{":
-                    depth += 1
-                elif ch == "}":
-                    depth -= 1
-                    if depth == 0:
-                        last_complete_obj_end = i
-            if last_complete_obj_end > 0:
-                candidate = fragment[:last_complete_obj_end + 1] + "]"
-                try:
-                    return json.loads(candidate)
-                except json.JSONDecodeError:
-                    pass
-            open_braces = 0
-            open_brackets = 0
-            in_string = False
-            escape_next = False
-            for ch in fragment:
-                if escape_next:
-                    escape_next = False
-                    continue
-                if ch == "\\":
-                    escape_next = True
-                    continue
-                if ch == '"' and not escape_next:
-                    in_string = not in_string
-                    continue
-                if in_string:
-                    continue
-                if ch == "{":
-                    open_braces += 1
-                elif ch == "}":
-                    open_braces -= 1
-                elif ch == "[":
-                    open_brackets += 1
-                elif ch == "]":
-                    open_brackets -= 1
-            closing = ""
-            if in_string:
-                closing += '"'
-            closing += "}" * max(0, open_braces) + "]" * max(0, open_brackets)
-            candidate = fragment + closing
-            try:
-                return json.loads(candidate)
-            except json.JSONDecodeError:
-                pass
-        else:
-            open_braces = 0
-            open_brackets = 0
-            in_string = False
-            escape_next = False
-            last_complete_key_pos = -1
-            for i, ch in enumerate(fragment):
-                if escape_next:
-                    escape_next = False
-                    continue
-                if ch == "\\":
-                    escape_next = True
-                    continue
-                if ch == '"' and not escape_next:
-                    in_string = not in_string
-                    continue
-                if in_string:
-                    continue
-                if ch == "{":
-                    open_braces += 1
-                elif ch == "}":
-                    open_braces -= 1
-                    if open_braces == 0:
-                        last_complete_key_pos = i
-                elif ch == "[":
-                    open_brackets += 1
-                elif ch == "]":
-                    open_brackets -= 1
-            if last_complete_key_pos > 0:
-                candidate = fragment[:last_complete_key_pos + 1]
-                try:
-                    return json.loads(candidate)
-                except json.JSONDecodeError:
-                    pass
-            closing = ""
-            if in_string:
-                closing += '"'
-            closing += "]" * max(0, open_brackets) + "}" * max(0, open_braces)
-            candidate = fragment + closing
-            try:
-                return json.loads(candidate)
-            except json.JSONDecodeError:
-                pass
-        return None
-
     def _build_payload(self, project_id: str, step: Step, state) -> dict:
         payload = {}
 
@@ -2190,6 +2116,18 @@ class PipelineExecutor:
 
         payload["project_id"] = project_id
         payload["audit_fix_instructions"] = state.result_data.get("audit_fix_instructions", "")
+        payload["revision_mode"] = state.result_data.get("revision_mode", False)
+        payload["existing_scene_content"] = state.result_data.get("existing_scene_content", {})
+
+        if step.skill in ("choice_designer", "branch_designer", "interaction_designer"):
+            for _k in ("target_ending_count", "max_branch_depth"):
+                if _k not in payload and _k in (state.result_data or {}):
+                    payload[_k] = state.result_data[_k]
+
+        if step.skill in ("emotion_curve_designer", "chapter_outliner"):
+            for _k in ("wow_moment_density", "chapter_count"):
+                if _k not in payload and _k in (state.result_data or {}):
+                    payload[_k] = state.result_data[_k]
 
         return payload
 

@@ -10,6 +10,7 @@ from models.choice import ChoiceDesign
 from schemas.chapter import ChapterCreate, ChapterUpdate, ChapterResponse
 from schemas.chapter import SectionCreate, SectionUpdate, SectionResponse
 from schemas.choice import ChoiceDesignCreate, ChoiceDesignUpdate, ChoiceDesignResponse
+from utils.data_sync import notify_data_changed as _notify_data_changed
 
 router = APIRouter()
 
@@ -33,6 +34,7 @@ async def create_chapter(
         await ws_manager.send_chapter_created(str(project_id), str(chapter.id))
     except Exception:
         pass
+    await _notify_data_changed(str(project_id), "chapter_updated")
     return chapter
 
 
@@ -95,6 +97,7 @@ async def update_chapter(
         await ws_manager.send_chapter_updated(str(project_id), str(chapter.id))
     except Exception:
         pass
+    await _notify_data_changed(str(project_id), "chapter_updated")
     return chapter
 
 
@@ -117,6 +120,7 @@ async def delete_chapter(
         await ws_manager.send_chapter_deleted(str(project_id), str(chapter_id))
     except Exception:
         pass
+    await _notify_data_changed(str(project_id), "chapter_updated")
 
 
 # ========== Section CRUD ==========

@@ -53,6 +53,10 @@ WORLD_CONFIG_CROSS_REFS = {
     "core_contradiction": ["constraints", "impossible"],
     "social_structure": ["core_contradiction", "history", "culture"],
     "tech_magic": ["core_contradiction", "constraints", "impossible"],
+    "tech_system": ["core_contradiction", "constraints", "impossible"],
+    "martial_system": ["core_contradiction", "constraints", "impossible"],
+    "cultivation_system": ["core_contradiction", "constraints", "impossible"],
+    "info_structure": ["core_contradiction", "constraints", "impossible"],
     "geography": ["social_structure", "history"],
     "history": ["core_contradiction", "social_structure"],
     "culture": ["social_structure", "history", "constraints"],
@@ -64,6 +68,10 @@ WORLD_CONFIG_LABELS = {
     "core_contradiction": "核心矛盾",
     "social_structure": "社会结构",
     "tech_magic": "科技/魔法体系",
+    "tech_system": "科技体系",
+    "martial_system": "武功体系",
+    "cultivation_system": "修炼体系",
+    "info_structure": "信息结构",
     "geography": "地理环境",
     "history": "历史",
     "culture": "文化",
@@ -71,10 +79,44 @@ WORLD_CONFIG_LABELS = {
     "impossible": "不可能之事",
 }
 
+GENRE_DIMENSION_MAP_PROMPTS = {
+    "科幻": {
+        "required": ["core_contradiction", "social_structure", "tech_system", "constraints", "impossible"],
+        "optional": ["geography", "history", "culture"],
+    },
+    "武侠": {
+        "required": ["core_contradiction", "social_structure", "martial_system", "geography", "constraints", "impossible"],
+        "optional": ["history", "culture"],
+    },
+    "仙侠": {
+        "required": ["core_contradiction", "social_structure", "cultivation_system", "geography", "constraints", "impossible"],
+        "optional": ["history", "culture"],
+    },
+    "都市": {
+        "required": ["core_contradiction", "social_structure", "constraints", "impossible"],
+        "optional": ["geography", "history", "culture"],
+    },
+    "悬疑": {
+        "required": ["core_contradiction", "social_structure", "info_structure", "constraints", "impossible"],
+        "optional": ["geography", "history"],
+    },
+}
+
+DEFAULT_GENRE_DIMENSIONS_PROMPTS = {
+    "required": ["core_contradiction", "social_structure", "tech_magic", "constraints", "impossible"],
+    "optional": ["geography", "history", "culture"],
+}
+
+
+def get_genre_dimensions(genre: str) -> list[str]:
+    config = GENRE_DIMENSION_MAP_PROMPTS.get(genre, DEFAULT_GENRE_DIMENSIONS_PROMPTS)
+    return config["required"] + config["optional"]
+
 
 def build_world_gen_prompt(config_key: str, label: str, desc: str,
                            existing_world: dict | None = None,
-                           current_value: str = "") -> tuple[str, str]:
+                           current_value: str = "",
+                           genre: str = "") -> tuple[str, str]:
     """
     世界观配置项生成提示词。
     返回 (system_prompt, user_prompt)
@@ -90,7 +132,8 @@ def build_world_gen_prompt(config_key: str, label: str, desc: str,
             existing_context = "\n".join(existing_lines)
 
     cross_ref_context = ""
-    cross_ref_keys = WORLD_CONFIG_CROSS_REFS.get(config_key, [])
+    valid_dims = get_genre_dimensions(genre) if genre else list(WORLD_CONFIG_LABELS.keys())
+    cross_ref_keys = [k for k in WORLD_CONFIG_CROSS_REFS.get(config_key, []) if k in valid_dims]
     if cross_ref_keys and existing_world:
         cross_ref_lines = []
         for ref_key in cross_ref_keys:
@@ -1450,23 +1493,17 @@ def build_foreshadow_design_prompt(
     characters: list,
     chapter_outlines: list,
     chapter_count: int = 20,
+    genre: str = "",
 ) -> tuple[str, str]:
     """
     三层伏笔体系设计提示词。
     从核心真相反推，设计全剧级/章节级/场景级三层伏笔，
     每条伏笔包含三层含义、世界观关联、角色关联、伏笔间关联、回收路径。
     """
+    dim_keys = get_genre_dimensions(genre) if genre else ["core_contradiction", "social_structure", "tech_magic", "geography", "history", "culture", "constraints", "impossible"]
     world_parts = []
-    for key, label in [
-        ("core_contradiction", "核心矛盾"),
-        ("social_structure", "社会结构"),
-        ("tech_magic", "科技/魔法体系"),
-        ("geography", "地理环境"),
-        ("history", "历史背景"),
-        ("culture", "文化习俗"),
-        ("constraints", "约束条件"),
-        ("impossible", "不可能事项"),
-    ]:
+    for key in dim_keys:
+        label = WORLD_CONFIG_LABELS.get(key, key)
         val = world_settings.get(key, "")
         if val and isinstance(val, str) and val.strip():
             world_parts.append(f"  ▸ {label}（{key}）：{val}")
@@ -1530,6 +1567,23 @@ def build_foreshadow_design_prompt(
 - 为全剧级和章节级伏笔提供强化素材
 - 每条场景级伏笔描述可精简为50-150字，三层含义用简短一句话概括即可
 
+【四级伏笔分类 — 必须标注】
+每条伏笔必须标注 foreshadow_category 字段，取值范围：
+- "global"（全剧型）：贯穿全剧的核心伏笔，影响整体叙事走向
+- "chapter"（章节型）：跨章节的伏笔，在多个章节间展开
+- "node"（节点型）：依附于特定叙事节点的伏笔，在关键选择/转折处触发
+- "scene"（场景型）：在单一场景内完成埋设与回收的伏笔
+
+注意：foreshadow_category 与 foreshadow_tier 是独立维度。tier 描述伏笔的层级（全局/章节/场景），category 描述伏笔的叙事分类方式。
+
+【伏笔关联链接 — 必须输出】
+除 foreshadow_links 内联关联外，还必须在JSON顶层输出 links 数组，描述伏笔之间的显式链接关系：
+- source_id：源伏笔的fs_code
+- target_id：目标伏笔的fs_code
+- link_type：链接类型（DEPENDS_ON / SUPPORTS / ENABLES / CONFLICTS_WITH）
+- strength：关联强度（0.0-1.0，1.0为最强关联）
+- description：关联描述（简述两个伏笔如何相互影响）
+
 【伏笔关联体系 — 四类关联】
 每条伏笔必须标注与其他伏笔的关联关系：
 - DEPENDS_ON：本伏笔的成立依赖目标伏笔先被埋设
@@ -1566,6 +1620,7 @@ def build_foreshadow_design_prompt(
     {{
       "name": "伏笔名称",
       "foreshadow_tier": "global | chapter | scene",
+      "foreshadow_category": "global | chapter | node | scene",
       "surface_layer": "表面层含义（普通观众能感知的，100-300字）",
       "deep_layer": "深层层含义（细心观众能发现的，100-300字）",
       "truth_layer": "真相层含义（与核心真相直接关联，100-300字）",
@@ -1581,6 +1636,9 @@ def build_foreshadow_design_prompt(
         {{"type": "身份反转|信息反转|情境反转|情感爆发|多线交汇|真相揭露", "title": "方案名称", "summary": "核心设定（200-500字）", "emotional_impact": "情感冲击描述", "score": 85}}
       ]
     }}
+  ],
+  "links": [
+    {{"source_id": "F-XXX-001", "target_id": "F-XXX-002", "link_type": "SUPPORTS", "strength": 0.8, "description": "关联描述"}}
   ],
   "stats": {{
     "global_count": 0,

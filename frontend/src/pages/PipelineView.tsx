@@ -209,17 +209,12 @@ export default function PipelineView() {
     }
   }, [fetchStatus])
 
-  useEffect(() => {
-    if (!autoAdvance || !status || advancingRef.current) return
-    const isRunning = effectiveIsRunning
-    if (isRunning) {
-      const timer = setTimeout(() => handleAdvance(), 2000)
-      return () => clearTimeout(timer)
-    }
-    if (effectiveIsWaitingHuman) {
-      setAutoAdvance(false)
-    }
-  }, [autoAdvance, status?.status, storePipeline?.status])
+  const effectiveStatus = storePipeline?.status || status?.status || 'not_started'
+  const effectiveIsRunning = isPipelineRunning || effectiveStatus === 'running'
+  const effectiveIsWaitingHuman = effectiveStatus === 'waiting_human'
+  const effectiveIsCompleted = effectiveStatus === 'completed'
+  const effectiveIsFailed = effectiveStatus === 'failed'
+  const effectiveIsCancelled = effectiveStatus === 'cancelled'
 
   const handleAdvance = async () => {
     if (!projectId || advancingRef.current) return
@@ -244,6 +239,17 @@ export default function PipelineView() {
       advancingRef.current = false
     }
   }
+
+  useEffect(() => {
+    if (!autoAdvance || !status || advancingRef.current) return
+    if (effectiveStatus === 'waiting_human' || effectiveStatus === 'completed') {
+      const timer = setTimeout(() => handleAdvance(), 2000)
+      return () => clearTimeout(timer)
+    }
+    if (effectiveIsWaitingHuman) {
+      setAutoAdvance(false)
+    }
+  }, [autoAdvance, effectiveStatus, effectiveIsRunning, handleAdvance])
 
   const handleApprove = async () => {
     if (!projectId) return
@@ -312,13 +318,6 @@ export default function PipelineView() {
   const isDependencyError = status?.error_message?.includes('依赖的前置步骤尚未完成')
   const failedPhaseIdx = status?.current_phase ?? 0
   const failedStepIdx = status?.current_step ?? 0
-
-  const effectiveStatus = storePipeline?.status || status?.status || 'not_started'
-  const effectiveIsRunning = isPipelineRunning || effectiveStatus === 'running' || effectiveStatus === 'not_started' || effectiveStatus === 'not_initialized'
-  const effectiveIsWaitingHuman = effectiveStatus === 'waiting_human'
-  const effectiveIsCompleted = effectiveStatus === 'completed'
-  const effectiveIsFailed = effectiveStatus === 'failed'
-  const effectiveIsCancelled = effectiveStatus === 'cancelled'
 
   if (!projectId) {
     return (
@@ -413,19 +412,29 @@ export default function PipelineView() {
             <>
               <Button
                 type="primary"
-                icon={advancing ? <SyncOutlined spin /> : <PlayCircleOutlined />}
+                icon={effectiveIsRunning ? <SyncOutlined spin /> : advancing ? <SyncOutlined spin /> : <PlayCircleOutlined />}
                 onClick={handleAdvance}
                 loading={advancing}
-                disabled={effectiveIsWaitingHuman}
+                disabled={effectiveIsRunning || effectiveIsWaitingHuman}
               >
-                {effectiveIsWaitingHuman ? '等待审核中' : advancing ? '执行中...' : '推进下一步'}
+                {effectiveIsRunning ? '正在运行...' : effectiveIsWaitingHuman ? '等待审核中' : advancing ? '执行中...' : '推进下一步'}
               </Button>
-              <Checkbox
-                checked={autoAdvance}
-                onChange={(e) => setAutoAdvance(e.target.checked)}
-              >
-                <span className="text-sm text-gray-600 dark:text-gray-400">自动推进</span>
-              </Checkbox>
+              {autoAdvance ? (
+                <Button
+                  size="small"
+                  danger
+                  onClick={() => setAutoAdvance(false)}
+                >
+                  暂停
+                </Button>
+              ) : (
+                <Checkbox
+                  checked={autoAdvance}
+                  onChange={(e) => setAutoAdvance(e.target.checked)}
+                >
+                  <span className="text-sm text-gray-600 dark:text-gray-400">自动推进</span>
+                </Checkbox>
+              )}
             </>
           )}
           {effectiveIsWaitingHuman && (

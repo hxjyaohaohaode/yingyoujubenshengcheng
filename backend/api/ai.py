@@ -16,6 +16,7 @@ from services.llm_prompts import (
     build_chapter_outline_prompt, build_wow_plan_prompt,
     build_relation_network_prompt, build_foreshadow_design_prompt,
 )
+from utils.constants import WORLD_CONFIG_META
 
 logger = logging.getLogger(__name__)
 
@@ -70,29 +71,25 @@ class SceneDispatchRequest(BaseModel):
     requirements: str = ""
 
 
-WORLD_CONFIG_META = {
-    "core_contradiction": {"label": "核心矛盾", "desc": "世界运行的终极矛盾，驱动所有剧情发展的核心动力"},
-    "social_structure": {"label": "社会结构", "desc": "权力分布、阶层划分、组织关系"},
-    "tech_magic": {"label": "科技/魔法体系", "desc": "能力上限、代价、规则、稀有度"},
-    "geography": {"label": "地理环境", "desc": "世界地图、重要地标、气候特征"},
-    "history": {"label": "历史背景", "desc": "重大历史事件、传说、被掩盖的真相"},
-    "culture": {"label": "文化习俗", "desc": "信仰、节日、禁忌、性别观、道德观"},
-    "constraints": {"label": "约束条件", "desc": "人物行为在剧情中的硬性限制"},
-    "impossible": {"label": "不可能事项", "desc": "这个世界绝对不可能发生的事"},
+from utils.json_parser import parse_llm_json as _extract_json_block
+
+TASK_TIME_ESTIMATES = {
+    "world_gen": "预计 15-30 秒",
+    "character_gen": "预计 20-45 秒",
+    "foreshadow_gen": "预计 30-60 秒",
+    "foreshadow_design": "预计 30-60 秒",
+    "emotion_curve": "预计 10-20 秒",
+    "chapter_outline": "预计 20-40 秒",
+    "relation_network": "预计 15-30 秒",
+    "scene_gen": "预计 30-60 秒",
+    "scene_generation": "预计 30-60 秒",
+    "scene_generation_v2": "预计 30-60 秒",
+    "scene_audit": "预计 10-20 秒",
+    "choice_design": "预计 10-20 秒",
+    "branch_design": "预计 15-30 秒",
+    "full_audit": "预计 10-20 秒",
+    "audit": "预计 10-20 秒",
 }
-
-
-def _extract_json_block(text: str) -> str:
-    match = re.search(r'```json\s*([\s\S]*?)\s*```', text)
-    if match:
-        return match.group(1).strip()
-    match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', text)
-    if match:
-        return match.group(0)
-    match = re.search(r'\[[^\[\]]*(?:\{[^{}]*\}[^\[\]]*)*\]', text)
-    if match:
-        return match.group(0)
-    return text
 
 
 def _repair_truncated_json_text(text: str) -> dict | list | None:
@@ -238,19 +235,22 @@ async def _call_agent(intent: str, system_prompt: str, user_prompt: str,
 
 
 def _salvage_content(content: str) -> dict:
-    result = {"raw": content[:8000], "narration": "", "dialogue": [], "emotion_level": 5}
-    parts = re.split(r'(?:旁白|叙述|场景描述)[：:]', content, maxsplit=1)
-    if len(parts) > 1:
-        result["narration"] = parts[1].strip()[:8000]
-    else:
-        result["narration"] = content.strip()[:8000]
-    dialogue_matches = re.findall(r'(?:[（(]([^）)]+)[）)])?\s*["""]([^"""]+)["""]', content)
-    if dialogue_matches:
-        result["dialogue"] = [{"speaker": m[0] or "角色", "text": m[1]} for m in dialogue_matches]
-    emo_match = re.search(r'情绪[^：:]*[：:]\s*(\d+)', content)
-    if emo_match:
-        result["emotion_level"] = min(10, max(1, int(emo_match.group(1))))
-    return result
+    narration = content[:6000] if content else ""
+    dialogue_lines = []
+    for m in re.finditer(r'[""「](.+?)[""」](?:[，,]\s*(.+?)[。.])?', content):
+        dialogue_lines.append({"speaker": m.group(2) or "角色", "line": m.group(1)})
+    emotion_level = 5
+    emotional_words = ["震惊", "愤怒", "悲伤", "恐惧", "惊喜", "绝望", "狂喜", "痛苦", "温暖", "感动"]
+    for w in emotional_words:
+        if w in content:
+            emotion_level = 7
+            break
+    return {
+        "raw": content[:8000],
+        "narration": narration,
+        "dialogue": dialogue_lines[:10],
+        "emotion_level": emotion_level,
+    }
 
 
 async def _call_and_parse_json(intent: str, system_prompt: str, user_prompt: str,
@@ -557,12 +557,28 @@ async def dispatch_foreshadow_generate(project_id: uuid.UUID,
     core_truth = runtime.core_truth
 
     world = await _gather_world_context(db, project_id)
+    genre = ""
+    try:
+        from models.project_config import ProjectConfig as PCModel
+        config_result = await db.execute(
+            select(PCModel).where(PCModel.project_id == project_id)
+        )
+        pc = config_result.scalar_one_or_none()
+        if pc and hasattr(pc, "genre") and pc.genre:
+            genre = pc.genre
+    except Exception:
+        pass
     world_settings = {}
     settings_mapping = {
         "核心矛盾": "core_contradiction",
         "社会结构": "social_structure",
         "科技/魔法体系": "tech_magic",
+        "科技体系": "tech_system",
+        "武功体系": "martial_system",
+        "修炼体系": "cultivation_system",
+        "信息结构": "info_structure",
         "地理环境": "geography",
+        "城市地图": "geography",
         "历史背景": "history",
         "文化习俗": "culture",
         "约束条件": "constraints",
@@ -741,6 +757,7 @@ async def generate_foreshadow_design(project_id: uuid.UUID,
         characters=characters,
         chapter_outlines=chapter_outlines,
         chapter_count=chapter_count,
+        genre=genre,
     )
 
     try:
@@ -877,11 +894,13 @@ async def get_task_progress(task_id: str):
     try:
         from tasks import get_progress
         progress = get_progress(task_id)
+        task_type = progress.get("task_type", "")
+        estimated = TASK_TIME_ESTIMATES.get(task_type, "预计 15-30 秒")
         return {
             "task_id": task_id,
             "status": progress["status"],
             "progress": progress["progress"],
-            "estimated_time": "预计 3 秒",
+            "estimated_time": estimated,
         }
     except Exception:
         return {
@@ -918,6 +937,7 @@ async def generate_world_config(project_id: uuid.UUID, config_key: str,
     existing_world = await _gather_world_context(db, project_id)
 
     current_value = ""
+    genre = ""
     try:
         from models.project_config import ProjectConfig as PCModel
         from api.projects import _get_world_config_value
@@ -929,11 +949,13 @@ async def generate_world_config(project_id: uuid.UUID, config_key: str,
             val = _get_world_config_value(config, config_key)
             if val and isinstance(val, str) and val.strip():
                 current_value = val
+            if hasattr(config, "genre") and config.genre:
+                genre = config.genre
     except Exception:
         pass
 
     system_prompt, user_prompt = build_world_gen_prompt(
-        config_key, meta["label"], meta["desc"], existing_world, current_value
+        config_key, meta["label"], meta["desc"], existing_world, current_value, genre=genre
     )
 
     try:
@@ -1944,46 +1966,6 @@ async def design_emotion_curve(project_id: uuid.UUID, db: AsyncSession = Depends
         }
 
     return {"status": "error", "message": "AI 未返回可应用的情感曲线方案"}
-
-
-def _generate_fallback_emotion_curve(existing: list) -> list[dict]:
-    """基于三幕结构生成回退情感曲线"""
-    chapter_count = len(existing)
-    if chapter_count == 0:
-        return []
-    if chapter_count == 1:
-        return [{"chapter_number": existing[0].chapter_number, "emotion_target": 8}]
-
-    act1_end = max(1, round(chapter_count * 0.25))
-    act2_end = max(act1_end + 1, round(chapter_count * 0.75))
-
-    def _target_for(index: int) -> int:
-        if index == 0:
-            return 4
-        if index == chapter_count - 1:
-            return 9
-        if index < act1_end:
-            return min(7, 4 + index)
-        if index < act2_end:
-            pos = index - act1_end
-            length = act2_end - act1_end
-            wave = [6, 8, 5, 7, 4, 6, 8, 5]
-            if length > 0:
-                wave_idx = pos % len(wave)
-                return wave[wave_idx]
-            return 6
-        return min(10, 7 + (index - act2_end) * 2)
-
-    return [
-        {
-            "chapter_number": ch.chapter_number,
-            "emotion_target": _target_for(idx),
-            "reason": "基于三幕结构的回退分配",
-            "act": "第一幕" if idx < act1_end else "第二幕" if idx < act2_end else "第三幕",
-            "beat_type": "建置",
-        }
-        for idx, ch in enumerate(existing)
-    ]
 
 
 # ==================== Wow Distribution ====================

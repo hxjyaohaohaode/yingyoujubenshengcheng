@@ -73,6 +73,38 @@ const REL_TYPE_COLORS: Record<string, string> = {
   information_broker: '#0e7490',
 }
 
+interface CharGraphNode extends d3.SimulationNodeDatum {
+  id: string
+  name: string
+  role: string
+  goal: string | null
+  fear: string | null
+  radius: number
+}
+
+interface CharGraphLink extends d3.SimulationLinkDatum<CharGraphNode> {
+  source: CharGraphNode | number | string
+  target: CharGraphNode | number | string
+  trust: number
+  favor: number
+  relation_type: string | null
+  id: string
+  isHidden: boolean
+  arcDirection: string
+  triggerCondition: string | null
+  arcMilestones: unknown[]
+  infoAsymmetry: Record<string, unknown>
+  infoKnownAAboutB: unknown[]
+  infoKnownBAboutA: unknown[]
+}
+
+interface ArcMilestone {
+  chapter?: number | string
+  event?: string
+  trust_change?: number
+  favor_change?: number
+}
+
 function apiCharToCharData(c: Character): CharacterData {
   return {
     id: c.id, project_id: c.project_id,
@@ -489,8 +521,8 @@ export default function Characters() {
       .style('cursor', 'pointer')
       .on('click', (_e: any, d: any) => {
         _e.stopPropagation()
-        const a = characters.find(c => c.id === (d.source as any)?.id || c.id === d.source)
-        const b = characters.find(c => c.id === (d.target as any)?.id || c.id === d.target)
+        const a = characters.find(c => c.id === (d.source as CharGraphNode)?.id || c.id === d.source)
+        const b = characters.find(c => c.id === (d.target as CharGraphNode)?.id || c.id === d.target)
         if (a && b) {
           setRelEditor({
             relId: d.id, a: a.name, b: b.name,
@@ -1050,7 +1082,7 @@ export default function Characters() {
             stable: { label: '稳定', color: '#9ca3af', icon: <span style={{ color: '#9ca3af', fontWeight: 'bold' }}>→</span> },
           }
           const dirInfo = ARC_DIR_MAP[relEditor.arcDirection] || ARC_DIR_MAP.stable
-          const milestones = (Array.isArray(relEditor.arcMilestones) ? relEditor.arcMilestones : []) as any[]
+          const milestones = (Array.isArray(relEditor.arcMilestones) ? relEditor.arcMilestones : []) as ArcMilestone[]
           const infoAsym = (relEditor.infoAsymmetry || {}) as Record<string, any>
           const aKnows = (Array.isArray(relEditor.infoKnownAAboutB) ? relEditor.infoKnownAAboutB : []) as string[]
           const bKnows = (Array.isArray(relEditor.infoKnownBAboutA) ? relEditor.infoKnownBAboutA : []) as string[]

@@ -13,120 +13,27 @@ from core.agent.base import BaseAgent, AgentTask, AgentResult, layer0_value
 from core.agent.skill import Skill
 from core.agent.registry import register_agent
 from services.llm_prompts import build_foreshadow_design_prompt
+from utils.json_parser import parse_llm_json
 
 logger = logging.getLogger(__name__)
 
 
 def parse_foreshadow_design(text: str) -> dict:
-    content = text.strip()
-    json_start = content.find("{")
-    json_end = content.rfind("}")
-    if json_start != -1 and json_end != -1:
-        content = content[json_start:json_end + 1]
-    try:
-        return json.loads(content)
-    except json.JSONDecodeError:
-        pass
-
-    repaired = _repair_truncated_foreshadow_json(content)
-    if repaired is not None:
-        return repaired
-
-    content = content.replace("'", '"').replace("None", "null").replace("True", "true").replace("False", "false")
-    try:
-        return json.loads(content)
-    except json.JSONDecodeError:
-        pass
-
-    repaired = _repair_truncated_foreshadow_json(content)
-    if repaired is not None:
-        return repaired
-
+    parsed = parse_llm_json(text)
+    if isinstance(parsed, dict):
+        parsed.setdefault("foreshadows", parsed.get("foreshadows", []))
+        parsed.setdefault("links", parsed.get("links", []))
+        parsed.setdefault("stats", parsed.get("stats", {}))
+        return parsed
     logger.warning("Foreshadow JSON解析失败，返回空结构")
-    return {"foreshadows": [], "relations": [], "design_philosophy": "", "revelation_path": [], "stats": {}}
-
-
-def _repair_truncated_foreshadow_json(text: str) -> dict | None:
-    if not text:
-        return None
-    start = text.find("{")
-    if start == -1:
-        return None
-    fragment = text[start:]
-
-    open_braces = 0
-    open_brackets = 0
-    in_string = False
-    escape_next = False
-    last_complete_brace_pos = -1
-
-    for i, ch in enumerate(fragment):
-        if escape_next:
-            escape_next = False
-            continue
-        if ch == "\\":
-            escape_next = True
-            continue
-        if ch == '"' and not escape_next:
-            in_string = not in_string
-            continue
-        if in_string:
-            continue
-        if ch == "{":
-            open_braces += 1
-        elif ch == "}":
-            open_braces -= 1
-            if open_braces == 0:
-                last_complete_brace_pos = i
-        elif ch == "[":
-            open_brackets += 1
-        elif ch == "]":
-            open_brackets -= 1
-
-    if last_complete_brace_pos > 0:
-        candidate = fragment[:last_complete_brace_pos + 1]
-        try:
-            result = json.loads(candidate)
-            if isinstance(result, dict):
-                result.setdefault("foreshadows", result.get("foreshadows", []))
-                result.setdefault("stats", result.get("stats", {}))
-                return result
-        except json.JSONDecodeError:
-            pass
-
-    closing = ""
-    if in_string:
-        closing += '"'
-    closing += "]" * max(0, open_brackets) + "}" * max(0, open_braces)
-    candidate = fragment + closing
-    try:
-        result = json.loads(candidate)
-        if isinstance(result, dict):
-            result.setdefault("foreshadows", result.get("foreshadows", []))
-            result.setdefault("stats", result.get("stats", {}))
-            return result
-    except json.JSONDecodeError:
-        pass
-
-    return None
+    return {"foreshadows": [], "relations": [], "links": [], "design_philosophy": "", "revelation_path": [], "stats": {}}
 
 
 def parse_foreshadow_reaction(text: str) -> dict:
-    content = text.strip()
-    json_start = content.find("{")
-    json_end = content.rfind("}")
-    if json_start != -1 and json_end != -1:
-        candidate = content[json_start:json_end + 1]
-        try:
-            return json.loads(candidate)
-        except json.JSONDecodeError:
-            pass
-
-    repaired = _repair_truncated_foreshadow_json(content[json_start:] if json_start != -1 else content)
-    if repaired is not None:
-        return repaired
-
-    return {"reaction_analysis": content, "reactions": [], "network_strength": 5}
+    parsed = parse_llm_json(text)
+    if isinstance(parsed, dict):
+        return parsed
+    return {"reaction_analysis": text.strip(), "reactions": [], "network_strength": 5}
 
 
 FORESHADOW_DESIGN_SKILL = Skill()
@@ -190,7 +97,10 @@ class ForeshadowAgent(BaseAgent):
         chapter_count = len(chapters) if chapters else payload.get("chapter_count", 20)
 
         world_settings = {}
-        for key in ["core_contradiction", "social_structure", "tech_magic", "geography", "history", "culture", "constraints", "impossible"]:
+        genre_name = layer0_value(layer0, "genre") or payload.get("genre", "")
+        from services.llm_prompts import get_genre_dimensions
+        dim_keys = get_genre_dimensions(genre_name) if genre_name else ["core_contradiction", "social_structure", "tech_magic", "geography", "history", "culture", "constraints", "impossible"]
+        for key in dim_keys:
             val = world_config.get(key, "")
             if val and isinstance(val, str) and val.strip():
                 world_settings[key] = val
@@ -243,6 +153,7 @@ class ForeshadowAgent(BaseAgent):
             characters=characters,
             chapter_outlines=chapter_outlines,
             chapter_count=chapter_count,
+            genre=genre_name,
         )
 
         rendered_prompt = f"{system_prompt}\n\n{user_prompt}"
@@ -260,11 +171,19 @@ class ForeshadowAgent(BaseAgent):
         if not foreshadows:
             return
 
+        for fs in foreshadows:
+            if "foreshadow_category" not in fs:
+                tier = fs.get("foreshadow_tier", "chapter")
+                fs["foreshadow_category"] = {"global": "global", "chapter": "chapter", "node": "node", "scene": "scene"}.get(tier, fs.get("foreshadow_category", "chapter"))
+
+        result.setdefault("links", [])
+
         stats = result.get("stats", {})
         global_count = stats.get("global_count", 0)
         chapter_count = stats.get("chapter_count", 0)
+        node_count = stats.get("node_count", 0)
         scene_count = stats.get("scene_count", 0)
-        total = global_count + chapter_count + scene_count
+        total = global_count + chapter_count + node_count + scene_count
 
         if total == 0:
             for fs in foreshadows:
@@ -273,12 +192,15 @@ class ForeshadowAgent(BaseAgent):
                     global_count += 1
                 elif tier == "chapter":
                     chapter_count += 1
+                elif tier == "node":
+                    node_count += 1
                 else:
                     scene_count += 1
-            total = global_count + chapter_count + scene_count
+            total = global_count + chapter_count + node_count + scene_count
             stats = {
                 "global_count": global_count,
                 "chapter_count": chapter_count,
+                "node_count": node_count,
                 "scene_count": scene_count,
                 "total_count": total,
             }

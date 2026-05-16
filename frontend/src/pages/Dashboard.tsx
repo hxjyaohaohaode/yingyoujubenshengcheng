@@ -107,6 +107,10 @@ function PipelineStatusCard() {
   const optimisticTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
+    initialFetchedRef.current = false
+  }, [currentProject?.id])
+
+  useEffect(() => {
     api.get<{ deepseek_api_key_set: boolean; mimo_api_key_set: boolean }>('/config/llm')
       .then(data => setApiKeyStatus({ deepseek: data.deepseek_api_key_set, mimo: data.mimo_api_key_set }))
       .catch(() => {})

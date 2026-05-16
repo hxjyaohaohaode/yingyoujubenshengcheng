@@ -259,6 +259,7 @@ export default function GlobalWebSocket() {
           queryClientRef.current.invalidateQueries({ queryKey: ['characters'] })
           queryClientRef.current.invalidateQueries({ queryKey: ['foreshadows'] })
           queryClientRef.current.invalidateQueries({ queryKey: ['relations'] })
+          eventBus.emit(DataEvents.DATA_SYNC_REQUIRED, data)
           break
 
         case 'notification':

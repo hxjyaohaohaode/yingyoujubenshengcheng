@@ -144,7 +144,23 @@ class StorageService:
             await self.db.commit()
 
     async def lock_layer0(self, project_id: str, key: str):
-        pass
+        result = await self.db.execute(
+            text("SELECT id, value FROM world_settings WHERE project_id = :pid AND bucket = 'layer0'"),
+            {"pid": project_id},
+        )
+        rows = result.fetchall()
+        if rows:
+            for row in rows:
+                try:
+                    data = json.loads(row[1]) if isinstance(row[1], str) else row[1]
+                except (json.JSONDecodeError, TypeError):
+                    data = {}
+                data["_locked"] = True
+                await self.db.execute(
+                    text("UPDATE world_settings SET value = :val WHERE id = :rid"),
+                    {"val": json.dumps(data, ensure_ascii=False), "rid": row[0]},
+                )
+            await self.db.commit()
 
     async def get_character_states(self, project_id: str,
                                     character_ids: list[str] | None = None) -> list[dict]:
@@ -459,15 +475,6 @@ class StorageService:
 
         return graph
 
-    async def get_affected_scenes(self, project_id: str, entity_type: str, entity_id: str) -> list[str]:
-        graph = await self.get_scene_dependency_graph(project_id)
-        affected = set()
-        for edge in graph["edges"]:
-            if edge.get("type") == entity_type and edge.get("label") == entity_id:
-                affected.add(edge["from"])
-                affected.add(edge["to"])
-        return list(affected)
-
     async def get_prev_scenes(self, scene_id: str, count: int = 2) -> list[dict]:
         scene_result = await self.db.execute(
             text("SELECT chapter_id, scene_code FROM scenes WHERE id = :scene_id"),
@@ -742,27 +749,6 @@ class StorageService:
         cols = result.keys()
         return [dict(zip(cols, row)) for row in rows]
 
-    async def get_audit_history(self, project_id: str, limit: int = 20) -> list[dict]:
-        result = await self.db.execute(
-            text(
-                "SELECT * FROM audit_records WHERE project_id = :project_id ORDER BY created_at DESC LIMIT :limit"
-            ),
-            {"project_id": project_id, "limit": limit},
-        )
-        rows = result.fetchall()
-        cols = result.keys()
-        return [dict(zip(cols, row)) for row in rows]
-
-    async def get_rejection_count(self, scene_id: str) -> int:
-        result = await self.db.execute(
-            text(
-                "SELECT COUNT(*) FROM audit_records WHERE scene_id = :scene_id AND overall_result = 'rejected'"
-            ),
-            {"scene_id": scene_id},
-        )
-        row = result.fetchone()
-        return row[0] if row else 0
-
     async def update_scene_status(self, scene_id: str, status: str):
         now = _now_expr()
         await self.db.execute(
@@ -818,42 +804,6 @@ class StorageService:
                 {"health": health, "fs_id": fs_id},
             )
         await self.db.commit()
-
-    async def bulk_update_character_states(self, updates: list[dict]):
-        for upd in updates:
-            char_id = upd.pop("id", None)
-            if char_id and upd:
-                set_clauses = [f"{key} = :{key}" for key in upd]
-                params = {"character_id": str(char_id), **upd}
-                await self.db.execute(
-                    text(f"UPDATE characters SET {', '.join(set_clauses)} WHERE id = :character_id"),
-                    params,
-                )
-        await self.db.commit()
-
-    async def get_project_stats(self, project_id: str) -> dict:
-        wc = await self.get_project_word_count(project_id)
-        sc = await self.db.execute(
-            text("SELECT COUNT(*) FROM scenes WHERE project_id = :pid"),
-            {"pid": project_id},
-        )
-        scene_count = sc.scalar_one() or 0
-        cc = await self.db.execute(
-            text("SELECT COUNT(*) FROM characters WHERE project_id = :pid"),
-            {"pid": project_id},
-        )
-        char_count = cc.scalar_one() or 0
-        fc = await self.db.execute(
-            text("SELECT COUNT(*) FROM foreshadows WHERE project_id = :pid"),
-            {"pid": project_id},
-        )
-        fs_count = fc.scalar_one() or 0
-        return {
-            "word_count": wc,
-            "scene_count": scene_count,
-            "character_count": char_count,
-            "foreshadow_count": fs_count,
-        }
 
     async def get_choices(self, project_id: str) -> list[dict]:
         result = await self.db.execute(
@@ -925,7 +875,11 @@ class StorageService:
         await self.db.commit()
 
     async def clear_world_config(self, project_id: str):
-        pass
+        await self.db.execute(
+            text("DELETE FROM world_settings WHERE project_id = :pid"),
+            {"pid": project_id},
+        )
+        await self.db.commit()
 
     async def clear_characters(self, project_id: str):
         await self.db.execute(
@@ -1119,10 +1073,12 @@ class StorageService:
         await self.db.commit()
 
     async def update_scene(self, project_id: str, scene_id: str, updates: dict):
+        ALLOWED_SCENE_COLUMNS = {"title", "summary", "content", "status", "emotion_level", "chapter_id", "scene_index", "target_word_count", "emotion_target", "foreshadow_tasks", "key_turning_points", "worldview_refs", "narration", "dialogue", "actions", "choices", "scene_transition"}
+        filtered_updates = {k: v for k, v in updates.items() if k in ALLOWED_SCENE_COLUMNS}
         now = _now_expr()
         set_clauses = []
         params = {"project_id": project_id, "scene_id": scene_id}
-        for key, val in updates.items():
+        for key, val in filtered_updates.items():
             set_clauses.append(f"{key} = :{key}")
             params[key] = val
         if set_clauses:

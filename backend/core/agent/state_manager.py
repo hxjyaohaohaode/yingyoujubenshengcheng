@@ -2,6 +2,7 @@ import json
 import logging
 from collections import defaultdict
 from typing import Any
+from utils.json_parser import parse_llm_json
 
 from core.agent.base import BaseAgent, AgentTask, AgentResult
 from core.agent.registry import register_agent
@@ -288,7 +289,7 @@ class StateManagerAgent(BaseAgent):
                     temperature=0.3,
                 )
 
-                llm_parsed = self._extract_json_from_text(llm_result.content)
+                llm_parsed = parse_llm_json(llm_result.content)
                 if llm_parsed and isinstance(llm_parsed, dict):
                     char_updates_list = llm_parsed.get("character_updates", [])
                     for cu in char_updates_list:
@@ -338,80 +339,6 @@ class StateManagerAgent(BaseAgent):
                         logger.warning("更新角色 %s 状态失败: %s", char_id, str(e))
 
         return {"updated": len(updates), "details": updates}
-
-    def _extract_json_from_text(self, text: str) -> dict | None:
-        if not text:
-            return None
-        text = text.strip()
-        if text.startswith("```json"):
-            text = text[7:]
-        elif text.startswith("```"):
-            text = text[3:]
-        if text.endswith("```"):
-            text = text[:-3]
-        text = text.strip()
-        try:
-            return json.loads(text)
-        except json.JSONDecodeError:
-            pass
-        import re
-        m = re.search(r'\{[\s\S]*\}', text)
-        if m:
-            try:
-                return json.loads(m.group(0))
-            except json.JSONDecodeError:
-                pass
-        start = text.find("{")
-        if start >= 0:
-            fragment = text[start:]
-            open_braces = 0
-            open_brackets = 0
-            in_string = False
-            escape_next = False
-            for ch in fragment:
-                if escape_next:
-                    escape_next = False
-                    continue
-                if ch == "\\":
-                    escape_next = True
-                    continue
-                if ch == '"' and not escape_next:
-                    in_string = not in_string
-                    continue
-                if in_string:
-                    continue
-                if ch == "{":
-                    open_braces += 1
-                elif ch == "}":
-                    open_braces -= 1
-                elif ch == "[":
-                    open_brackets += 1
-                elif ch == "]":
-                    open_brackets -= 1
-            closing = ""
-            if in_string:
-                closing += '"'
-            closing += "]" * max(0, open_brackets) + "}" * max(0, open_braces)
-            candidate = fragment + closing
-            try:
-                return json.loads(candidate)
-            except json.JSONDecodeError:
-                pass
-            last_complete = -1
-            depth = 0
-            for i, ch in enumerate(fragment):
-                if ch == "{":
-                    depth += 1
-                elif ch == "}":
-                    depth -= 1
-                    if depth == 0:
-                        last_complete = i
-            if last_complete > 0:
-                try:
-                    return json.loads(fragment[:last_complete + 1])
-                except json.JSONDecodeError:
-                    pass
-        return None
 
     async def _update_foreshadows_from_scene(self, scene: dict, project_id: str) -> dict:
         foreshadow_ops = scene.get("foreshadow_ops", [])

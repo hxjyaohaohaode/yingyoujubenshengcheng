@@ -82,24 +82,4 @@ class GitDocumentManager:
         except ImportError:
             return json.loads(raw)
 
-    def get_commit_log(self, limit: int = 20) -> list[dict]:
-        try:
-            result = subprocess.run(
-                ["git", "log", f"-{limit}", "--pretty=format:%h|%s|%ai"],
-                cwd=self.repo_path, capture_output=True, timeout=10,
-            )
-            if result.returncode != 0:
-                return []
-            lines = result.stdout.decode().strip().split("\n")
-            entries = []
-            for line in lines:
-                parts = line.split("|", 2)
-                if len(parts) == 3:
-                    entries.append({
-                        "hash": parts[0],
-                        "message": parts[1],
-                        "date": parts[2],
-                    })
-            return entries
-        except (subprocess.TimeoutExpired, FileNotFoundError):
-            return []
+

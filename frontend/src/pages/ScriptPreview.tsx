@@ -95,18 +95,65 @@ const MORAL_LABELS: Record<string, string> = {
 }
 
 const FS_OP_CONFIG: Record<string, { icon: string; label: string; color: string }> = {
-  plant: { icon: '埋设', label: '埋设', color: '#10b981' },
-  reinforce: { icon: '强化', label: '强化', color: '#3b82f6' },
-  reveal: { icon: '[提示]', label: '回收', color: '#f59e0b' },
+  plant: { icon: '🌱', label: '埋设', color: '#10b981' },
+  reinforce: { icon: '🔄', label: '强化', color: '#3b82f6' },
+  reveal: { icon: '✨', label: '回收', color: '#f59e0b' },
+}
+
+function smartParse(content: unknown): string {
+  if (typeof content === 'string') {
+    try {
+      const parsed = JSON.parse(content)
+      if (typeof parsed === 'string') return parsed
+      if (typeof parsed === 'object' && parsed !== null) {
+        if (parsed.narration) return parsed.narration
+        if (parsed.content) return parsed.content
+        if (parsed.text) return parsed.text
+        return JSON.stringify(parsed, null, 2)
+      }
+      return String(parsed)
+    } catch {
+      return content
+    }
+  }
+  if (Array.isArray(content)) return content.join('\n')
+  if (typeof content === 'object' && content !== null) return JSON.stringify(content, null, 2)
+  return String(content ?? '')
+}
+
+function parseDialogue(dialogue: unknown): Array<{speaker: string; line: string; subtext?: string; emotion?: string}> {
+  if (Array.isArray(dialogue)) return dialogue
+  if (typeof dialogue === 'string') {
+    try { const p = JSON.parse(dialogue); return Array.isArray(p) ? p : [] } catch { return [] }
+  }
+  return []
+}
+
+function parseChoices(choices: unknown): Array<{text: string; consequence?: string; emotion_delta?: number}> {
+  if (Array.isArray(choices)) return choices
+  if (typeof choices === 'string') {
+    try { const p = JSON.parse(choices); return Array.isArray(p) ? p : [] } catch { return [] }
+  }
+  return []
 }
 
 function safeDialogue(raw: unknown): DialogueLine[] {
-  if (!Array.isArray(raw)) return []
+  if (!Array.isArray(raw)) {
+    if (typeof raw === 'string') {
+      try { const p = JSON.parse(raw); if (Array.isArray(p)) return p as DialogueLine[] } catch { return [] }
+    }
+    return []
+  }
   return raw as DialogueLine[]
 }
 
 function safeChoices(raw: unknown): ChoiceOption[] {
-  if (!Array.isArray(raw)) return []
+  if (!Array.isArray(raw)) {
+    if (typeof raw === 'string') {
+      try { const p = JSON.parse(raw); if (Array.isArray(p)) return p as ChoiceOption[] } catch { return [] }
+    }
+    return []
+  }
   return raw as ChoiceOption[]
 }
 
@@ -351,7 +398,8 @@ export default function ScriptPreview() {
   const renderNarration = (narration: string | null, sceneId: string) => {
     if (!narration) return <p className="text-sm text-gray-400 italic">[暂无内容]</p>
 
-    const lines = narration.split('\n')
+    const parsed = smartParse(narration)
+    const lines = parsed.split('\n')
     return (
       <div className={getFontClass()}>
         {lines.map((line, i) => {
@@ -382,30 +430,37 @@ export default function ScriptPreview() {
   }
 
   const renderDialogue = (dialogue: unknown[], sceneId: string) => {
-    const lines = safeDialogue(dialogue)
+    const parsedLines = parseDialogue(dialogue)
+    const lines: Array<{ speaker: string; text: string; subtext: string }> = parsedLines.length > 0
+      ? parsedLines.map(d => ({
+          speaker: d.speaker || '',
+          text: d.line || '',
+          subtext: d.subtext || '',
+        }))
+      : safeDialogue(dialogue).map(d => ({
+          speaker: d.speaker || d.character_name || '',
+          text: d.text || d.content || '',
+          subtext: d.subtext || '',
+        }))
     if (lines.length === 0) return null
 
     return (
       <div className="mt-4 space-y-3">
         {lines.map((d, i) => {
-          const speaker = d.speaker || d.character_name || ''
-          const text = d.text || d.content || ''
-          const subtext = d.subtext || ''
-
           return (
             <div key={i} className="ml-2">
               <div className="border-l-3 border-primary-400 dark:border-primary-500 pl-3 py-1 bg-primary-50/30 dark:bg-primary-900/10 rounded-r-md">
-                {speaker && (
+                {d.speaker && (
                   <span className="font-bold text-primary-600 dark:text-primary-400 text-sm">
-                    {speaker}
+                    {d.speaker}
                   </span>
                 )}
-                {speaker && <span className="text-gray-400 mx-1">：</span>}
-                <span className="text-gray-800 dark:text-gray-200 text-sm">{text}</span>
+                {d.speaker && <span className="text-gray-400 mx-1">：</span>}
+                <span className="text-gray-800 dark:text-gray-200 text-sm">{d.text}</span>
               </div>
-              {subtext && (
+              {d.subtext && (
                 <div className="ml-6 mt-0.5 text-xs text-gray-400 dark:text-gray-500 italic">
-                  潜台词 {subtext}
+                  潜台词 {d.subtext}
                 </div>
               )}
             </div>

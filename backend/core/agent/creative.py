@@ -200,27 +200,37 @@ class CreativeAgent(BaseAgent):
         return result
 
     def _generate_fallback_wow_plans(self, payload: dict) -> list[dict]:
-        fs_name = payload.get("foreshadow_name", "未命名伏笔")
+        genre = payload.get("genre", "")
+        theme = payload.get("theme", "")
+        foreshadows = payload.get("foreshadows", [])
         plans = []
-        for i, (type_key, type_info) in enumerate(CREATIVE_TYPES.items()):
+        for i, fs in enumerate(foreshadows[:3]):
             plans.append({
-                "wow_id": f"WOW-{type_key}-{i + 1}",
-                "type": type_key,
-                "type_name": type_info["name"],
-                "type_description": type_info["description"],
-                "design": f"基于伏笔「{fs_name}」的{type_info['name']}设计：{type_info['description']}。需要进一步由LLM细化具体实施方案。",
-                "scores": {
-                    "predictability": 5 + i,
-                    "emotional_impact": 8,
-                    "logical_consistency": 8,
-                    "revisit_value": 7,
-                },
-                "example_scene": f"（待LLM生成{type_info['name']}的示例场景）",
-                "rank": i + 1,
+                "foreshadow_id": fs.get("id", f"fs_{i}"),
+                "wow_type": "reversal",
+                "description": f"{genre}{theme}背景下的反转方案：利用伏笔「{fs.get('description', '未知')[:20]}」制造意外转折",
+                "intensity": 0.7,
+                "setup_hint": f"在前序场景中暗示{fs.get('description', '线索')[:15]}的存在",
+                "payoff_hint": f"在关键场景中揭示{fs.get('description', '真相')[:15]}的真实含义",
+            })
+        if not plans:
+            plans.append({
+                "foreshadow_id": "default",
+                "wow_type": "revelation",
+                "description": f"{genre}题材下的核心真相揭露方案",
+                "intensity": 0.6,
+                "setup_hint": "在前序场景中埋下暗示",
+                "payoff_hint": "在高潮场景中揭示真相",
             })
         return plans
 
     async def _post_process_infogap(self, result: dict, project_id: str, payload: dict) -> dict:
+        if not isinstance(result, dict):
+            result = {}
+        genre = payload.get("genre", "")
+        characters = payload.get("characters", [])
+        char_names = [c.get("name", "") for c in characters[:5] if isinstance(c, dict)]
+
         if not result.get("gatekeeper_scenes"):
             scenes = await self.storage.get_scene_summaries(project_id) or []
             foreshadows = await self.storage.get_foreshadows(project_id) or []
@@ -242,10 +252,15 @@ class CreativeAgent(BaseAgent):
 
             result["gatekeeper_scenes"] = gatekeepers
 
-        if not result.get("completeness_per_path"):
-            result["completeness_per_path"] = [
-                {"path": "default", "completeness": 0.7, "missing_info": []}
-            ]
+        result.setdefault("completeness", 0.5)
+        result.setdefault("missing_info", [
+            {"aspect": "角色深层动机", "description": f"主要角色{', '.join(char_names[:3])}的隐藏动机尚未充分揭示", "priority": "high"},
+            {"aspect": "世界观细节", "description": f"{genre}题材下的关键设定细节需要补充", "priority": "medium"},
+        ])
+        result.setdefault("recommendations", [
+            f"建议深化{genre}题材特有的叙事元素",
+            "建议增加角色之间的信息差和认知冲突",
+        ])
 
         if not result.get("cross_path_synergy"):
             result["cross_path_synergy"] = []

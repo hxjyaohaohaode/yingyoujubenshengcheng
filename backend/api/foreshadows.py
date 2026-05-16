@@ -5,12 +5,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from database import get_db
-from models.foreshadow import Foreshadow, ForeshadowRelation
+from models.foreshadow import Foreshadow, ForeshadowRelation, ForeshadowLink
 from models.scene import Scene
 from schemas.foreshadow import (
     ForeshadowCreate, ForeshadowUpdate, ForeshadowResponse,
     ForeshadowRelationCreate, ForeshadowRelationResponse,
+    ForeshadowLinkCreate, ForeshadowLinkResponse,
 )
+from utils.data_sync import notify_data_changed as _notify_data_changed
 
 router = APIRouter()
 
@@ -59,6 +61,7 @@ async def create_foreshadow(
         await ws_manager.send_foreshadow_created(str(project_id), str(foreshadow.id))
     except Exception:
         pass
+    await _notify_data_changed(str(project_id), "foreshadow_updated")
     return foreshadow
 
 
@@ -138,6 +141,20 @@ async def delete_fs_relation(
         raise HTTPException(status_code=404, detail="关联不存在")
     await db.delete(relation)
     await db.commit()
+
+
+@router.put("/projects/{project_id}/foreshadows/relations/{relation_id}")
+async def update_foreshadow_relation(relation_id: str, data: dict, db: AsyncSession = Depends(get_db)):
+    from sqlalchemy import text
+    allowed = {"relation_type", "from_fs_id", "to_fs_id"}
+    filtered = {k: v for k, v in data.items() if k in allowed}
+    if not filtered:
+        raise HTTPException(status_code=400, detail="No valid fields to update")
+    sets = ", ".join(f"{k} = :{k}" for k in filtered)
+    filtered["rid"] = relation_id
+    await db.execute(text(f"UPDATE foreshadow_relations SET {sets}, updated_at = NOW() WHERE id = :rid"), filtered)
+    await db.commit()
+    return {"status": "ok"}
 
 
 @router.get("/projects/{project_id}/foreshadows-graph")
@@ -362,6 +379,7 @@ async def update_foreshadow(
         await ws_manager.send_foreshadow_updated(str(project_id), str(foreshadow.id))
     except Exception:
         pass
+    await _notify_data_changed(str(project_id), "foreshadow_updated")
     return foreshadow
 
 
@@ -384,3 +402,51 @@ async def delete_foreshadow(
         await ws_manager.send_foreshadow_deleted(str(project_id), str(foreshadow_id))
     except Exception:
         pass
+    await _notify_data_changed(str(project_id), "foreshadow_updated")
+
+
+@router.post("/projects/{project_id}/foreshadow-links", response_model=ForeshadowLinkResponse, status_code=201)
+async def create_foreshadow_link(
+    project_id: uuid.UUID,
+    data: ForeshadowLinkCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    link = ForeshadowLink(
+        id=uuid.uuid4(),
+        project_id=project_id,
+        **data.model_dump(exclude_none=True),
+    )
+    db.add(link)
+    await db.commit()
+    await db.refresh(link)
+    return link
+
+
+@router.get("/projects/{project_id}/foreshadow-links", response_model=list[ForeshadowLinkResponse])
+async def list_foreshadow_links(
+    project_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(ForeshadowLink).where(ForeshadowLink.project_id == project_id)
+    )
+    return result.scalars().all()
+
+
+@router.delete("/projects/{project_id}/foreshadow-links/{link_id}", status_code=204)
+async def delete_foreshadow_link(
+    project_id: uuid.UUID,
+    link_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(ForeshadowLink).where(
+            ForeshadowLink.id == link_id,
+            ForeshadowLink.project_id == project_id,
+        )
+    )
+    link = result.scalar_one_or_none()
+    if not link:
+        raise HTTPException(status_code=404, detail="伏笔链接不存在")
+    await db.delete(link)
+    await db.commit()

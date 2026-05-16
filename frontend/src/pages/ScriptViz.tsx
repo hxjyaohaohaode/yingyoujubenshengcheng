@@ -243,7 +243,7 @@ function ScriptVizInner() {
         })
       } else if (selectedEdge.data?.relationType === 'foreshadow') {
         await foreshadowsApi.updateRelation(currentProject.id, String(dbId), {
-          relation_type: edgeEditType, description: edgeEditDescription,
+          relation_type: edgeEditType,
         })
       }
       notification.success({ message: '连线已更新', placement: 'topRight' })

@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, field_validator
 FS_CODE_PATTERN = re.compile(r"^(F-[A-Z]+-\d{3}|FS-\d{3,}|F[A-Z]-\d{3,})$")
 VALID_FS_TYPES = ["global", "chapter", "scene", "interactive"]
 VALID_FS_STATUSES = ["design", "active", "planted", "reinforced", "revealed", "abandoned"]
+VALID_FS_CATEGORIES = ["global", "chapter", "node", "scene"]
 
 
 class ForeshadowCreate(BaseModel):
@@ -14,6 +15,7 @@ class ForeshadowCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
     fs_type: str = Field(..., min_length=1, max_length=20)
     foreshadow_tier: Optional[str] = "chapter"
+    foreshadow_category: str = "chapter"
     surface_layer: Optional[str] = None
     deep_layer: Optional[str] = None
     truth_layer: Optional[str] = None
@@ -58,12 +60,20 @@ class ForeshadowCreate(BaseModel):
             raise ValueError(f"无效的伏笔状态，允许: {', '.join(VALID_FS_STATUSES)}")
         return v
 
+    @field_validator("foreshadow_category")
+    @classmethod
+    def validate_foreshadow_category(cls, v: str) -> str:
+        if v not in VALID_FS_CATEGORIES:
+            raise ValueError(f"无效的伏笔分类，允许: {', '.join(VALID_FS_CATEGORIES)}")
+        return v
+
 
 class ForeshadowUpdate(BaseModel):
     fs_code: Optional[str] = None
     name: Optional[str] = None
     fs_type: Optional[str] = None
     foreshadow_tier: Optional[str] = None
+    foreshadow_category: Optional[str] = None
     surface_layer: Optional[str] = None
     deep_layer: Optional[str] = None
     truth_layer: Optional[str] = None
@@ -105,6 +115,15 @@ class ForeshadowUpdate(BaseModel):
             raise ValueError(f"无效的伏笔类型，允许: {', '.join(VALID_FS_TYPES)}")
         return v
 
+    @field_validator("foreshadow_category")
+    @classmethod
+    def validate_foreshadow_category(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        if v not in VALID_FS_CATEGORIES:
+            raise ValueError(f"无效的伏笔分类，允许: {', '.join(VALID_FS_CATEGORIES)}")
+        return v
+
 
 class ForeshadowResponse(BaseModel):
     id: uuid.UUID
@@ -113,6 +132,7 @@ class ForeshadowResponse(BaseModel):
     name: str
     fs_type: str
     foreshadow_tier: Optional[str] = "chapter"
+    foreshadow_category: str = "chapter"
     surface_layer: Optional[str] = None
     deep_layer: Optional[str] = None
     truth_layer: Optional[str] = None
@@ -154,6 +174,29 @@ class ForeshadowRelationResponse(BaseModel):
     to_fs_id: uuid.UUID
     relation_type: str
     created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class ForeshadowLinkCreate(BaseModel):
+    source_id: uuid.UUID
+    target_id: uuid.UUID
+    link_type: str = Field(..., min_length=1, max_length=20)
+    strength: float = Field(default=0.5, ge=0.0, le=1.0)
+    description: str = ""
+
+
+class ForeshadowLinkResponse(BaseModel):
+    id: uuid.UUID
+    project_id: uuid.UUID
+    source_id: uuid.UUID
+    target_id: uuid.UUID
+    link_type: str
+    strength: float = 0.5
+    description: str = ""
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True

@@ -22,20 +22,12 @@ from schemas.project import (
     ProjectConfigSchema, ProjectListResponse,
 )
 from core.script_generator.config_recommender import ConfigRecommender
+from utils.data_sync import notify_data_changed as _notify_data_changed
+from utils.constants import WORLD_CONFIG_META
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-WORLD_CONFIG_META = {
-    "core_contradiction": {"label": "核心矛盾", "desc": "世界运行的终极矛盾，驱动所有剧情发展的核心动力"},
-    "social_structure": {"label": "社会结构", "desc": "权力分布、阶层划分、组织关系"},
-    "tech_magic": {"label": "科技/魔法体系", "desc": "能力上限、代价、规则、稀有度"},
-    "geography": {"label": "地理环境", "desc": "世界地图、重要地标、气候特征"},
-    "history": {"label": "历史背景", "desc": "重大历史事件、传说、被掩盖的真相"},
-    "culture": {"label": "文化习俗", "desc": "信仰、节日、禁忌、性别观、道德观"},
-    "constraints": {"label": "约束条件", "desc": "人物行为在剧情中的硬性限制"},
-    "impossible": {"label": "不可能事项", "desc": "这个世界绝对不可能发生的事"},
-}
 
 WORLD_SETTINGS_BUCKET = "world_settings"
 WORLD_LOCKS_BUCKET = "world_config_locks"
@@ -508,6 +500,8 @@ async def update_project_config_key(
 
     config.updated_at = datetime.now(UTC)
     await db.commit()
+
+    await _notify_data_changed(str(project_id), "world_config_updated")
 
     current_value = _get_world_config_value(config, key)
     lock_payload = _ensure_custom_rule_buckets(config)[WORLD_LOCKS_BUCKET].get(key, {})

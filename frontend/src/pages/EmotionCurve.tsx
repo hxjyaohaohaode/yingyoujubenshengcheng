@@ -13,7 +13,7 @@ import {
 } from 'recharts'
 import { useProjectStore } from '../stores/projectStore'
 import { useAgentStore } from '../stores/agentStore'
-import { api } from '../api/client'
+import { api, chaptersApi, scenesApi } from '../api/client'
 import { eventBus, DataEvents } from '../services/eventBus'
 
 interface SceneEmotion {
@@ -129,14 +129,14 @@ export default function EmotionCurve() {
     setFetchError(null)
     try {
       const [chaptersData, scenesData] = await Promise.all([
-        api.get<any[]>(`/projects/${currentProject.id}/chapters`),
-        api.get<any[]>(`/projects/${currentProject.id}/scenes`),
+        chaptersApi.list(currentProject.id),
+        scenesApi.list(currentProject.id),
       ])
 
       if (!mountedRef.current) return
 
-      const chapterMap = new Map<string, any>(chaptersData.map((ch: any) => [ch.id, ch]))
-      const scenesByChapter = new Map<string, any[]>()
+      const chapterMap = new Map<string, typeof chaptersData[0]>(chaptersData.map(ch => [ch.id, ch]))
+      const scenesByChapter = new Map<string, typeof scenesData[0][]>()
 
       for (const scene of scenesData) {
         const chId = scene.chapter_id
@@ -145,16 +145,16 @@ export default function EmotionCurve() {
         scenesByChapter.get(chId)!.push(scene)
       }
 
-      const sortedChapters = [...chaptersData].sort((a: any, b: any) => a.chapter_number - b.chapter_number)
+      const sortedChapters = [...chaptersData].sort((a, b) => a.chapter_number - b.chapter_number)
       const chapterEmotions: ChapterEmotion[] = []
 
       for (const ch of sortedChapters) {
-        const scenes = scenesByChapter.get(ch.id) || []
-        const emotionLevels = scenes.map((s: any) => s.emotion_level ?? 0)
-        const sceneEmotions: SceneEmotion[] = scenes.map((s: any) => ({
+        const chScenes = scenesByChapter.get(ch.id) || []
+        const emotionLevels = chScenes.map(s => s.emotion_level ?? 0)
+        const sceneEmotions: SceneEmotion[] = chScenes.map(s => ({
           scene_id: s.id,
-          scene_code: s.scene_code,
-          title: s.scene_code,
+          scene_code: s.scene_code || '',
+          title: s.scene_code || '',
           emotion_level: s.emotion_level ?? 0,
           scene_type: s.scene_type || 'dialogue',
           is_wow: s.is_wow_moment || false,
@@ -162,7 +162,7 @@ export default function EmotionCurve() {
 
         const hasScenes = emotionLevels.length > 0
         const sceneAvg = hasScenes
-          ? Math.round((emotionLevels.reduce((a: number, b: number) => a + b, 0) / emotionLevels.length) * 10) / 10
+          ? Math.round((emotionLevels.reduce((a, b) => a + b, 0) / emotionLevels.length) * 10) / 10
           : 0
         const aiTarget = ch.emotion_target ?? 0
 
@@ -170,12 +170,12 @@ export default function EmotionCurve() {
           chapter_number: ch.chapter_number,
           title: ch.title || `第${ch.chapter_number}章`,
           avg_emotion: hasScenes ? sceneAvg : aiTarget,
-          peak_emotion: hasScenes ? emotionLevels.reduce((a: number, b: number) => Math.max(a, b), -Infinity) : aiTarget,
-          valley_emotion: hasScenes ? emotionLevels.reduce((a: number, b: number) => Math.min(a, b), Infinity) : aiTarget,
+          peak_emotion: hasScenes ? emotionLevels.reduce((a, b) => Math.max(a, b), -Infinity) : aiTarget,
+          valley_emotion: hasScenes ? emotionLevels.reduce((a, b) => Math.min(a, b), Infinity) : aiTarget,
           emotion_target: aiTarget,
           scenes: sceneEmotions,
           rhythm_warnings: [],
-          wow_count: scenes.filter((s: any) => s.is_wow_moment).length,
+          wow_count: chScenes.filter(s => s.is_wow_moment).length,
         })
       }
 
@@ -483,9 +483,16 @@ export default function EmotionCurve() {
                   dot={false} />
                 <Line type="monotone" dataKey="valley_emotion" stroke="#3b82f6" strokeWidth={1.5} strokeDasharray="3 3"
                   dot={false} />
-                <Line type="monotone" dataKey="emotion_target" stroke="#10b981" strokeWidth={2.5} strokeDasharray="6 3"
-                  dot={{ r: 3, fill: '#10b981', stroke: '#fff', strokeWidth: 1.5 }}
-                  connectNulls={true} />
+                {!allEmotionTargetsZero && (
+                  <Line type="monotone" dataKey="emotion_target" stroke="#10b981" strokeWidth={2.5} strokeDasharray="6 3"
+                    dot={{ r: 3, fill: '#10b981', stroke: '#fff', strokeWidth: 1.5 }}
+                    connectNulls={true} />
+                )}
+                {allEmotionTargetsZero && (
+                  <Line type="monotone" dataKey="emotion_target" stroke="#999" strokeWidth={1.5} strokeDasharray="5 5"
+                    dot={false}
+                    connectNulls={true} />
+                )}
                 {chartData.filter(d => d.has_wow).map((d, i) => (
                   <ReferenceDot key={`wow-${i}`} x={d.label} y={d.avg_emotion + 0.8} r={14}
                     fill="#fbbf24" fillOpacity={0.25} stroke="#f59e0b" strokeWidth={1}
@@ -503,7 +510,7 @@ export default function EmotionCurve() {
             <span className="flex items-center gap-1"><span className="inline-block w-3 h-0.5 bg-purple-500 rounded" />均值曲线</span>
             <span className="flex items-center gap-1"><span className="inline-block w-3 h-0.5 bg-red-400 rounded" style={{ borderStyle: 'dashed' }} />峰值线</span>
             <span className="flex items-center gap-1"><span className="inline-block w-3 h-0.5 bg-blue-400 rounded" style={{ borderStyle: 'dotted' }} />低谷线</span>
-            <span className="flex items-center gap-1"><span className="inline-block w-3 h-0.5 bg-emerald-500 rounded" style={{ borderStyle: 'dashed' }} />AI设计目标</span>
+            <span className="flex items-center gap-1"><span className="inline-block w-3 h-0.5 bg-emerald-500 rounded" style={{ borderStyle: 'dashed' }} />{allEmotionTargetsZero ? '未设定' : 'AI设计目标'}</span>
             <span className="flex items-center gap-1"><span className="text-amber-500 font-bold">Wow</span>哇塞时刻</span>
             <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-full bg-orange-500" />节奏警告</span>
           </div>

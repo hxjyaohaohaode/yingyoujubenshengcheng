@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, UTC
-from sqlalchemy import Column, String, Integer, Text, DateTime, ForeignKey, Boolean
+from sqlalchemy import Column, String, Integer, Float, Text, DateTime, ForeignKey, Boolean
 from sqlalchemy.orm import relationship
 
 from database import Base
@@ -16,6 +16,7 @@ class Foreshadow(Base):
     name = Column(String(200), nullable=False)
     fs_type = Column(String(20), nullable=False)
     foreshadow_tier = Column(String(20), default="chapter")
+    foreshadow_category = Column(String(20), default="chapter", nullable=False, comment="global|chapter|node|scene")
     surface_layer = Column(Text, nullable=True)
     deep_layer = Column(Text, nullable=True)
     truth_layer = Column(Text, nullable=True)
@@ -56,3 +57,21 @@ class ForeshadowRelation(Base):
     project = relationship("Project", backref="foreshadow_relations")
     from_fs = relationship("Foreshadow", foreign_keys=[from_fs_id])
     to_fs = relationship("Foreshadow", foreign_keys=[to_fs_id])
+
+
+class ForeshadowLink(Base):
+    __tablename__ = "foreshadow_links"
+
+    id = Column(GUID, primary_key=True, default=uuid.uuid4)
+    project_id = Column(GUID, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    source_id = Column(GUID, ForeignKey("foreshadows.id", ondelete="CASCADE"), nullable=False, index=True)
+    target_id = Column(GUID, ForeignKey("foreshadows.id", ondelete="CASCADE"), nullable=False, index=True)
+    link_type = Column(String(20), nullable=False)
+    strength = Column(Float, default=0.5)
+    description = Column(Text, default="")
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
+    updated_at = Column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
+
+    project = relationship("Project", backref="foreshadow_links")
+    source = relationship("Foreshadow", foreign_keys=[source_id])
+    target = relationship("Foreshadow", foreign_keys=[target_id])

@@ -4,7 +4,7 @@ from models.character import Character, CharacterRelation
 from models.chapter import Chapter, ChapterSection
 from models.choice import ChoiceDesign
 from models.scene import Scene, SceneVersion
-from models.foreshadow import Foreshadow, ForeshadowRelation
+from models.foreshadow import Foreshadow, ForeshadowRelation, ForeshadowLink
 from models.emotion_curve import EmotionCurve
 from models.audit import AuditRecord
 from models.element import Element, InfoPoint
@@ -15,7 +15,7 @@ __all__ = [
     "Project", "ProjectConfig",
     "Character", "CharacterRelation",
     "Chapter", "ChapterSection", "ChoiceDesign", "Scene", "SceneVersion",
-    "Foreshadow", "ForeshadowRelation",
+    "Foreshadow", "ForeshadowRelation", "ForeshadowLink",
     "EmotionCurve", "AuditRecord", "Element", "InfoPoint", "AgentTask",
     "NarrativeMemory", "WordBudget",
 ]

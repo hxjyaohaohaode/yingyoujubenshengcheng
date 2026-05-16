@@ -89,15 +89,10 @@ class BaseAgent(ABC):
         skill = self._select_skill(task.task_type)
         context = {}
         try:
-            import asyncio
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                import concurrent.futures
-                with concurrent.futures.ThreadPoolExecutor() as pool:
-                    context = loop.run_in_executor(pool, lambda: asyncio.run(self._build_context(task)))
-                    context = {}
+            if hasattr(skill, 'context_builder') and skill.context_builder:
+                context = skill.context_builder(task.payload or {})
             else:
-                context = asyncio.run(self._build_context(task))
+                context = {}
         except Exception:
             context = {}
         return skill.render_prompt(context, task.payload)

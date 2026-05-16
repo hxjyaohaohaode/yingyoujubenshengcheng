@@ -17,7 +17,7 @@ from config import CORS_ORIGINS, APP_ENV, REDIS_URL, DATABASE_URL
 from database import init_db, close_db, async_session_factory, check_db_health, get_db
 from middleware.rate_limit import RateLimitMiddleware
 from middleware.audit_log import AuditLogger, AuditLoggingMiddleware
-from api import projects, characters, foreshadows, scenes, chapters, ai, export, pipeline, templates, script_viz, upload, search, knowledge
+from api import projects, characters, foreshadows, scenes, chapters, ai, export, pipeline, upload, search
 from websocket.router import router as ws_router
 import models
 import core.pipeline.pipeline_state_model
@@ -268,11 +268,8 @@ app.include_router(ai.router, prefix="/api", tags=["ai"])
 app.include_router(export.router, prefix="/api", tags=["export"])
 app.include_router(pipeline.router, prefix="/api", tags=["pipeline"])
 app.include_router(pipeline.public_router, prefix="/api", tags=["pipeline"])
-app.include_router(templates.router, prefix="/api", tags=["templates"])
-app.include_router(script_viz.router, prefix="/api", tags=["script-viz"])
 app.include_router(upload.router, prefix="/api", tags=["upload"])
 app.include_router(search.router, prefix="/api", tags=["search"])
-app.include_router(knowledge.router, prefix="/api", tags=["knowledge"])
 app.include_router(ws_router)
 
 

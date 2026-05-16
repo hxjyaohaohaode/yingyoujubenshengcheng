@@ -53,4 +53,5 @@ export const DataEvents = {
   PIPELINE_ADVANCED: 'pipeline:advanced',
   PIPELINE_STATUS_CHANGED: 'pipeline:status-changed',
   OUTLINE_UPDATED: 'data:outline-updated',
+  DATA_SYNC_REQUIRED: 'data:sync-required',
 } as const

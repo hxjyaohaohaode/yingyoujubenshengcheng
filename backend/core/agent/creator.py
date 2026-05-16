@@ -99,153 +99,53 @@ _INTERACTIVE_GAME_WRITING = """
 7. **环境叙事**：场景本身应当传达故事信息（用场景说故事，不只用字说故事）
 """
 
-SCENE_WRITER_SKILL.prompt_template = """你是一位{genre}题材的{style}风格专业编剧，专精互动影游剧本创作。你现在要为一个完整的互动影游项目**撰写可直接阅读的小说式场景正文**。
+SCENE_WRITER_SKILL.prompt_template = """你是专业剧本编剧。
 
-【生死线——违反任何一条，作品直接报废】
-1. **narration必须是完整的小说正文**，读者不需要任何补充说明就能沉浸其中。像金庸、古龙、刘慈欣那样写环境、写动作、写心理、写氛围。
-2. **dialogue必须是角色实际说出口的完整台词**，不是"他说了关于XX的事"这种间接叙述。
-3. **你必须真正"写"场景，不是"描述"场景**——禁止输出大纲、摘要、设定说明、分镜脚本。
+## 世界观
+{world_setting}
 
-{_chinese_writing_standards}
+## 本章大纲
+{chapter_outline}
 
-{_interactive_game_writing}
+## 本章角色
+{chapter_characters}
 
-{_scene_gen_standards}
+## 伏笔任务
+{foreshadow_tasks}
 
-## 项目核心约束
-{project_brief}
+## 情感目标
+{emotion_target}
 
-## 创作锚点
-- 子类型: {sub_genre}
-- 主题: {theme}
-- 核心矛盾: {core_contradiction}
-- 叙事视角: {narrative_pov}
+## 目标字数
+{target_word_count}字
 
-## 世界观设定
-{world_settings}
+{previous_scene_context}
 
-## 角色详细档案
-{character_states}
+{scene_position_info}
 
-## 前序场景全文（请严格保持叙事连续性——角色位置、情感状态、已知信息必须自然衔接）
-{previous_scene}
+请撰写本场景的完整剧本内容。
 
-## 章节上下文
-{chapter_info}
+【叙事连续性 — 强制约束】
+1. **前序衔接**：本场景的开头必须自然承接前序场景的结尾——情绪、动作、对话、场景转换都必须连贯。
+2. **场景完整性**：每个场景必须包含完整的叙事弧（引入→发展→转折→收尾），不能只写片段。
+3. **角色一致性**：角色的语言风格、行为模式必须与角色设定完全一致。
+4. **伏笔执行**：必须执行指定的伏笔任务（埋设/强化/回收），且执行方式必须自然融入剧情。
 
-## 本场景任务
-- 场景编号: {scene_code}
-- 场景类型: {scene_type}
-- 情感目标: {emotion_target}/10
-- 地点: {location}
-- 天气: {weather}
-- 伏笔任务: {foreshadow_tasks}
-{wow_requirements}
-
-{word_constraints}
-
-## 参考素材（RAG检索结果）
-{rag_context}
-
-## 输出要求
-请输出 JSON 格式:
+输出JSON格式:
 {{
-  "narration": "完整的小说式场景叙述正文（必须包含画面感+至少两种感官描写：视觉、听觉、嗅觉、触觉、味觉）",
-  "sensory_tags": ["使用的感官类型，如：视觉", "听觉"],
+  "narration": "场景叙述文本（完整的场景描写，包含环境、动作、心理活动，200-800字）",
   "dialogue": [
-    {{
-      "char": "角色名",
-      "text": "角色实际说出的完整台词",
-      "subtext": "潜台词/真实意图（字面意思与真实意图的落差）",
-      "language_style": "该角色的语言风格标注（如：言简意赅/文绉绉/口语化）",
-      "catchphrase_ref": "口头禅引用（如有，标注口头禅内容；无则填空字符串）"
-    }}
+    {{"speaker": "角色名", "line": "台词内容", "subtext": "潜台词（可选）", "emotion": "情绪标签"}},
+    ...
   ],
-  "actions": ["关键动作描写1", "关键动作描写2", "关键动作描写3"],
+  "actions": ["关键动作描述1", "关键动作描述2"],
   "foreshadow_ops": [
-    {{
-      "fs_id": "伏笔ID",
-      "op": "plant/reinforce/reveal",
-      "content": "具体内容描述",
-      "worldview_ref": "关联的世界观设定（config_key+描述，如：social_structure-社会阶层不可逾越）",
-      "text_implementation": "文本实现方式（如何在叙述/对白/动作中埋设此伏笔，如：通过角色A闻到异常气味暗示XX）"
-    }}
+    {{"foreshadow_id": "伏笔ID", "op": "plant|reinforce|reveal", "method": "执行方式描述"}}
   ],
-  "choices": [
-    {{
-      "id": "A",
-      "text": "选项文本",
-      "consequence_direct": "直接后果（选择后立即发生的结果，100-200字）",
-      "consequence_indirect": "间接后果（中期显现的连锁反应，100-200字）",
-      "consequence_long_term": "远期后果（远期逐步暴露的深层影响，100-200字）",
-      "moral_alignment": "good/neutral/evil/gray",
-      "next_scene": "下一场景编号"
-    }}
-  ],
-  "causal_chain": {{
-    "preconditions": ["前置条件1（具体叙事内容，来自前序场景或世界观设定）", "前置条件2"],
-    "catalyst": "催化剂（触发本场景核心事件的具体叙事内容）",
-    "direct_result": "直接结果（本场景中立即产生的具体叙事结果）",
-    "indirect_result": "间接结果（本场景后中期显现的具体叙事影响）",
-    "far_result": "远期结果（远期逐步暴露的具体叙事影响）"
-  }},
-  "emotion_level": 1-10,
-  "suggestions": ["下一场景可关注的发展线索..."]
-}}
-
-【正确vs错误的例子】
-❌ 错误 narration："场景发生在酒馆，主角和反派对峙。"
-✅ 正确 narration："酒馆的灯笼在穿堂风里摇晃，把两人的影子撕成碎片。主角的手指扣在腰间的剑柄上，指节发白。空气中弥漫着劣质麦酒和汗渍的酸味。'你来了。'他说，声音比想象中稳。"
-
-❌ 错误 dialogue：{{"char": "角色A", "text": "我对你很失望", "subtext": "我对你很失望"}}
-✅ 正确 dialogue：{{"char": "角色A", "text": "这杯酒我敬你——敬你当年在雪地里给我那块干粮。", "subtext": "我记得你的恩情，但你也欠我一条命", "language_style": "言简意赅，每句不超过15字", "catchphrase_ref": "敬你"}}
-
-❌ 错误 choices：{{"id": "A", "text": "帮助他", "consequence": "他感谢你"}}
-✅ 正确 choices：{{"id": "A", "text": "将情报交给盟友", "consequence_direct": "盟友立即发动突袭，救出人质但损失惨重", "consequence_indirect": "敌方开始怀疑内部有叛徒，加强审查", "consequence_long_term": "盟友因这次行动获得的关键位置，在最终决战中成为决定性力量", "moral_alignment": "good"}}
-
-❌ 错误 foreshadow_ops：{{"fs_id": "FS001", "op": "plant", "content": "暗示角色B的真实身份"}}
-✅ 正确 foreshadow_ops：{{"fs_id": "FS001", "op": "plant", "content": "暗示角色B的真实身份", "worldview_ref": "history-百年前的流放事件", "text_implementation": "在叙述中描写角色B下意识触摸左耳的旧伤疤——与百年前流放者标记的传说吻合"}}
-
-❌ 错误 causal_chain：{{"preconditions": ["前序事件"], "catalyst": "发生了什么", "direct_result": "结果", "indirect_result": "间接结果", "far_result": "远期结果"}}
-✅ 正确 causal_chain：{{"preconditions": ["角色A在前一场景中获得了密室的钥匙", "世界观设定中百年流放者的后裔隐藏在贵族中"], "catalyst": "角色B在酒馆中下意识触摸左耳旧伤疤，被角色A注意到", "direct_result": "角色A开始怀疑角色B的身份，但选择不动声色", "indirect_result": "角色A开始暗中调查角色B的背景，导致两人关系出现裂痕", "far_result": "角色B的真实身份揭露，引发贵族阶层的权力重组"}}
-
-【绝对禁止】
-- narration写成"场景概述"、"剧情提要"、"分镜说明"或"设定描述"
-- dialogue写成"角色讨论了XX问题"这种间接叙述
-- 用 bullet points 或编号列表代替文学描写
-- 输出类似"本场景主要讲述..."的元描述
-- 对白没有潜台词（字面意思=真实意图）
-- 互动选择只有单一后果，没有三层推演
-- 互动选择缺少道德倾向标注
-- 伏笔操作缺少世界观关联或文本实现方式
-- 因果链环节用抽象概括代替具体叙事内容
-
-【必须遵守】
-- narration 必须是完整的文学性叙述文字，要像出版小说一样有画面感
-- narration 必须包含至少两种感官描写（视觉/听觉/嗅觉/触觉/味觉），并在sensory_tags中标注
-- dialogue 必须是完整的对话，每句台词都要有潜台词，不同角色说话方式必须有区分度
-- 每句对白必须标注说话角色的语言风格(language_style)和口头禅引用(catchphrase_ref)
-- 互动选择必须包含2-3个选项，每个选项有三层后果推演和道德倾向标注
-- 伏笔操作必须标注操作类型(op)、伏笔ID(fs_id)、世界观关联(worldview_ref)和文本实现方式(text_implementation)
-- 因果链五环节都必须有具体叙事内容，不能是抽象概括
-- 叙事必须符合世界观设定，不得出现矛盾内容
-- 角色行为必须与其性格、动机、语言风格一致，每个角色的口头禅和说话方式必须体现
-- 与前序场景保持因果连续性，自然衔接——角色在哪里、在做什么、知道什么信息必须延续
-- 精准控制篇幅，确保内容充实有深度，总字数必须达到字数要求
-- 场景结尾必须暗示后续发展的可能性（分支预埋）
-- 如果前序场景有角色受伤/获得信息/关系变化，本场景必须体现这些变化
-
-【自检清单——输出前确认】
-□ narration读起来像小说正文，不是摘要
-□ dialogue是角色直接说出的台词，不是描述
-□ narration包含至少两种感官描写，sensory_tags已标注
-□ 每句对白都有潜台词标注，且潜台词与字面意思存在落差
-□ 每句对白都标注了语言风格和口头禅引用
-□ 互动选择有2-3个选项，每个有三层后果推演和道德倾向
-□ 伏笔操作有操作类型、伏笔ID、世界观关联和文本实现方式
-□ 因果链五环节都有具体叙事内容
-□ 把narration和dialogue连起来读，是一个完整的、有画面感的场景
-□ 达到了字数要求"""
+  "emotion_value": 0.0,
+  "wow_moment": {{"type": "reversal|revelation|sacrifice|triumph|betrayal", "description": "哇塞时刻描述"}}或null,
+  "scene_transition": "场景转换描述（如何过渡到下一场景）"
+}}"""
 SCENE_WRITER_SKILL.output_parser = parse_scene_draft
 
 DIALOGUE_WRITER_SKILL = Skill()
@@ -308,6 +208,150 @@ BRANCH_DESIGNER_SKILL.prompt_template = """你是互动叙事设计专家。
 [{{"id": "A", "text": "选项文本", "consequence": "直接后果", "next_scene": "下一场景编号", "hidden": false, "prerequisites": []}}]"""
 BRANCH_DESIGNER_SKILL.output_parser = lambda text: {"choices": parse_scene_draft(text).get("choices", [])}
 
+GENRE_DIMENSION_MAP = {
+    "科幻": {
+        "required": ["core_contradiction", "social_structure", "tech_system", "constraints", "impossible"],
+        "optional": ["geography", "history", "culture"],
+        "dimension_labels": {
+            "core_contradiction": "核心矛盾",
+            "social_structure": "社会结构",
+            "tech_system": "科技体系",
+            "geography": "地理环境",
+            "history": "历史背景",
+            "culture": "文化习俗",
+            "constraints": "约束条件",
+            "impossible": "不可能事项",
+        },
+        "dimension_desc": {
+            "core_contradiction": "世界运行的终极矛盾，驱动所有剧情发展的核心动力",
+            "social_structure": "政治体系、阶层划分、权力流动、资源分配",
+            "tech_system": "科技规则、边界、代价与限制、技术等级体系",
+            "geography": "地缘格局、气候特征、资源分布、太空/行星/空间站布局",
+            "history": "关键历史事件、文明传承、未解之谜",
+            "culture": "价值观体系、禁忌、仪式、节日",
+            "constraints": "物理法则、社会规则、不可逾越的边界",
+            "impossible": "绝对禁忌、打破后不可逆的底线",
+        },
+    },
+    "武侠": {
+        "required": ["core_contradiction", "social_structure", "martial_system", "geography", "constraints", "impossible"],
+        "optional": ["history", "culture"],
+        "dimension_labels": {
+            "core_contradiction": "核心矛盾",
+            "social_structure": "江湖格局",
+            "martial_system": "武功体系",
+            "geography": "地理环境",
+            "history": "历史背景",
+            "culture": "文化习俗",
+            "constraints": "约束条件",
+            "impossible": "不可能事项",
+        },
+        "dimension_desc": {
+            "core_contradiction": "世界运行的终极矛盾，驱动所有剧情发展的核心动力",
+            "social_structure": "门派势力、江湖规矩、正邪之分、权力格局",
+            "martial_system": "武功境界、功法体系、内力规则、突破条件与代价",
+            "geography": "江湖地图、名山大川、秘境分布、门派据点",
+            "history": "江湖往事、百年恩怨、失传秘籍、未解之谜",
+            "culture": "江湖规矩、侠义精神、禁忌、仪式",
+            "constraints": "武学限制、天道规则、不可逾越的边界",
+            "impossible": "绝对禁忌、打破后不可逆的底线",
+        },
+    },
+    "仙侠": {
+        "required": ["core_contradiction", "social_structure", "cultivation_system", "geography", "constraints", "impossible"],
+        "optional": ["history", "culture"],
+        "dimension_labels": {
+            "core_contradiction": "核心矛盾",
+            "social_structure": "修仙界格局",
+            "cultivation_system": "修炼体系",
+            "geography": "地理环境",
+            "history": "历史背景",
+            "culture": "文化习俗",
+            "constraints": "约束条件",
+            "impossible": "不可能事项",
+        },
+        "dimension_desc": {
+            "core_contradiction": "世界运行的终极矛盾，驱动所有剧情发展的核心动力",
+            "social_structure": "宗门势力、修仙等级、仙凡之别、天庭/魔域格局",
+            "cultivation_system": "修炼境界、功法体系、天劫规则、飞升条件与代价",
+            "geography": "修仙界地图、洞天福地、秘境分布、宗门据点",
+            "history": "上古大战、仙人传承、失传功法、未解之谜",
+            "culture": "修仙规矩、道心要求、禁忌、仪式",
+            "constraints": "天道法则、因果报应、不可逾越的边界",
+            "impossible": "绝对禁忌、打破后不可逆的底线",
+        },
+    },
+    "都市": {
+        "required": ["core_contradiction", "social_structure", "constraints", "impossible"],
+        "optional": ["geography", "history", "culture"],
+        "dimension_labels": {
+            "core_contradiction": "核心矛盾",
+            "social_structure": "社会结构",
+            "geography": "城市地图",
+            "history": "历史背景",
+            "culture": "文化习俗",
+            "constraints": "约束条件",
+            "impossible": "不可能事项",
+        },
+        "dimension_desc": {
+            "core_contradiction": "世界运行的终极矛盾，驱动所有剧情发展的核心动力",
+            "social_structure": "阶层划分、权力流动、经济体系、利益集团",
+            "geography": "城市布局、关键地点、势力范围划分",
+            "history": "关键历史事件、未解之谜、旧账",
+            "culture": "价值观体系、社会潜规则、禁忌",
+            "constraints": "法律边界、社会规则、不可逾越的底线",
+            "impossible": "绝对禁忌、打破后不可逆的底线",
+        },
+    },
+    "悬疑": {
+        "required": ["core_contradiction", "social_structure", "info_structure", "constraints", "impossible"],
+        "optional": ["geography", "history"],
+        "dimension_labels": {
+            "core_contradiction": "核心矛盾",
+            "social_structure": "社会结构",
+            "info_structure": "信息结构",
+            "geography": "地理环境",
+            "history": "历史背景",
+            "constraints": "约束条件",
+            "impossible": "不可能事项",
+        },
+        "dimension_desc": {
+            "core_contradiction": "世界运行的终极矛盾，驱动所有剧情发展的核心动力",
+            "social_structure": "权力结构、利益集团、势力关系",
+            "info_structure": "信息分布、知情者层级、信息封锁机制、真相揭露路径",
+            "geography": "关键地点、犯罪现场、秘密空间",
+            "history": "关键历史事件、旧案、未解之谜",
+            "constraints": "物理法则、社会规则、不可逾越的边界",
+            "impossible": "绝对禁忌、打破后不可逆的底线",
+        },
+    },
+}
+
+DEFAULT_GENRE_DIMENSIONS = {
+    "required": ["core_contradiction", "social_structure", "tech_magic", "constraints", "impossible"],
+    "optional": ["geography", "history", "culture"],
+    "dimension_labels": {
+        "core_contradiction": "核心矛盾",
+        "social_structure": "社会结构",
+        "tech_magic": "科技/魔法体系",
+        "geography": "地理环境",
+        "history": "历史背景",
+        "culture": "文化习俗",
+        "constraints": "约束条件",
+        "impossible": "不可能事项",
+    },
+    "dimension_desc": {
+        "core_contradiction": "世界运行的终极矛盾，驱动所有剧情发展的核心动力",
+        "social_structure": "政治体系、阶层划分、权力流动",
+        "tech_magic": "科技/魔法体系（规则、边界、代价与限制）",
+        "geography": "地缘格局、气候特征、资源分布",
+        "history": "关键历史事件、文化传承、未解之谜",
+        "culture": "价值观体系、禁忌、仪式、节日",
+        "constraints": "物理法则、社会规则、不可逾越的边界",
+        "impossible": "绝对禁忌、打破后不可逆的底线",
+    },
+}
+
 WORLD_BUILDER_SKILL = Skill()
 WORLD_BUILDER_SKILL.name = "world_builder"
 WORLD_BUILDER_SKILL.intent = "write.creative"
@@ -323,29 +367,12 @@ WORLD_BUILDER_SKILL.prompt_template = """你是世界观构建专家。
 ## 目标总字数: {target_word_count}字
 ## 世界观深度目标: {world_depth}/10
 
-请构建世界观，包含以下8个维度:
-0. 核心矛盾（世界运行的终极矛盾，驱动所有剧情发展的核心动力。如果已给出核心矛盾，请在此基础上深化和扩展）
-1. 社会结构（政治体系、阶层划分、权力流动）
-2. 科技/魔法体系（规则、边界、代价与限制）
-3. 地理环境（地缘格局、气候特征、资源分布）
-4. 历史背景（关键历史事件、文化传承、未解之谜）
-5. 文化习俗（价值观体系、禁忌、仪式、节日）
-6. 约束条件（物理法则、社会规则、不可逾越的边界）
-7. 不可能发生的事项（绝对禁忌、打破后不可逆的底线）
+{genre_dimension_instructions}
 
 输出 JSON 格式，必须使用以下英文键名（每个值是详细的中文描述，200-500字）:
-{{
-  "core_contradiction": "核心矛盾的详细描述",
-  "social_structure": "社会结构的详细描述",
-  "tech_magic": "科技/魔法体系的详细描述",
-  "geography": "地理环境的详细描述",
-  "history": "历史背景的详细描述",
-  "culture": "文化习俗的详细描述",
-  "constraints": "约束条件的详细描述",
-  "impossible": "不可能事项的详细描述"
-}}
+{genre_dimension_json_template}
 
-构建深度应与目标字数匹配：10万字以内注重核心规则清晰，50万字以上需要多层次的隐藏设定。每个维度的描述必须具体、有画面感，禁止泛泛而谈。"""
+构建深度应与目标字数匹配：10万字以内注重核心规则清晰，50万字以上需要多层次的隐藏设定。每个维度的描述必须具体、有画面感，禁止泛泛而谈。**必须且只能生成上述列出的维度，不要生成未列出的维度。**"""
 
 
 def _parse_world_setting(text: str) -> dict:
@@ -360,6 +387,15 @@ def _parse_world_setting(text: str) -> dict:
 
 WORLD_BUILDER_SKILL.output_parser = _parse_world_setting
 
+GENRE_NAMING_STYLES = {
+    "仙侠": "角色名必须为2-4字古风名（如：云无涯、苏暮晚、萧逸尘、柳清漪），禁止使用现代名或西方名",
+    "武侠": "角色名必须为2-4字江湖风格名（如：沈惊鸿、叶孤城、陆小凤、花满楼），禁止使用现代名",
+    "科幻": "角色名可以是中英文混合或未来感名（如：林远舟、Nova·陈、K-7号、赵星河），体现未来感",
+    "都市": "角色名必须为常见中文姓名（如：陈默、林晓、赵远山、苏晴），贴近现实",
+    "悬疑": "角色名必须为常见中文姓名，但可以有代号或化名（如：方远/代号：影子、李明月），体现神秘感",
+    "历史": "角色名必须符合历史背景（如：萧瑾、慕容婉儿），禁止使用现代名",
+}
+
 CHARACTER_DESIGNER_SKILL = Skill()
 CHARACTER_DESIGNER_SKILL.name = "character_designer"
 CHARACTER_DESIGNER_SKILL.intent = "write.creative"
@@ -372,20 +408,29 @@ CHARACTER_DESIGNER_SKILL.prompt_template = """你是角色设计专家。
 ## 核心矛盾
 {core_contradiction}
 
+## 题材: {genre}
+## 角色命名风格约束: {naming_style_constraint}
 ## 需要角色数量: {character_count}
 ## 角色深度目标: {character_depth}/10
 ## 目标总字数: {target_word_count}字
 
 请设计{character_count}个角色，形成完整角色阵容，覆盖主角、反派、挚爱、导师、暗线角色等类型。
+
+【题材深度绑定 — 强制约束，必须遵守】
+1. **命名约束**：{naming_style_constraint}。违反此约束的角色直接作废。
+2. **核心动机绑定**：每个角色的core_goal必须直接回应世界观核心矛盾——角色要么在维护这个矛盾的现状，要么在试图打破它，要么在矛盾中求生。绝不能出现与核心矛盾无关的动机。
+3. **暗秘密绑定**：每个角色的dark_secret必须与世界观的深层设定有关——秘密的揭露必须能引发对世界观的重新认知。
+4. **行为约束绑定**：每个角色的behavior_never必须与世界观的约束条件/不可能事项一致。
+
 每个角色必须包含:
-- 名称、角色类型(protagonist/antagonist/love_interest/mentor/rival/wildcard/sidekick/foil)
-- 背景故事（200-350字，必须包含具体创伤事件和人生转折）
-- 核心动机、核心恐惧（两者必须形成内在矛盾）
+- 名称（{naming_style_constraint}）、角色类型(protagonist/antagonist/love_interest/mentor/rival/wildcard/sidekick/foil)
+- 背景故事（200-350字，必须包含具体创伤事件和人生转折，且必须发生在本世界观内）
+- 核心动机、核心恐惧（两者必须形成内在矛盾，且核心动机必须直接回应世界观核心矛盾）
 - 表面形象 vs 真实面目（必须形成反差）
-- 语言风格、口头禅、说话习惯
+- 语言风格、口头禅、说话习惯（必须符合{genre}题材风格）
 - 角色弧描述（起点→关键转折→潜在终局，100-200字）
-- 必然行为、绝对不会行为、需要铺垫才能行为
-- 情感弱点、隐藏创伤、不为人知的秘密
+- 必然行为、绝对不会行为（绝对不会行为必须与世界观约束条件一致）、需要铺垫才能行为
+- 情感弱点、隐藏创伤、不为人知的秘密（秘密必须与世界观的深层设定有关）
 - 与其他角色的关系线索（每个角色至少与3个其他角色有关系）
 
 角色之间必须形成:
@@ -740,6 +785,21 @@ class CreatorAgent(BaseAgent):
             context["narrative_pov"] = payload.get("narrative_pov", project_config.get("narrative_pov", "third_person"))
             context["target_word_count"] = payload.get("target_word_count", 50000)
             context["world_depth"] = payload.get("world_depth", 5)
+            genre_name = payload.get("genre", layer0_value(layer0, "genre") or "")
+            genre_config = GENRE_DIMENSION_MAP.get(genre_name, DEFAULT_GENRE_DIMENSIONS)
+            all_dims = genre_config["required"] + [d for d in genre_config["optional"] if d in (payload.get("include_dimensions", []) or genre_config["optional"])]
+            dim_instructions_lines = []
+            for d in all_dims:
+                label = genre_config["dimension_labels"].get(d, d)
+                desc = genre_config["dimension_desc"].get(d, "")
+                idx = genre_config["required"].index(d) if d in genre_config["required"] else len(genre_config["required"]) + genre_config["optional"].index(d) if d in genre_config["optional"] else 0
+                dim_instructions_lines.append(f"{idx}. {label}（{desc}）")
+            context["genre_dimension_instructions"] = "请构建世界观，包含以下维度:\n" + "\n".join(dim_instructions_lines)
+            dim_json_lines = []
+            for d in all_dims:
+                label = genre_config["dimension_labels"].get(d, d)
+                dim_json_lines.append(f'  "{d}": "{label}的详细描述"')
+            context["genre_dimension_json_template"] = "{{\n" + ",\n".join(dim_json_lines) + "\n}}"
 
         elif task.task_type == "character_designer":
             world_setting_text = self._format_world_settings(layer0, world_config)
@@ -750,7 +810,9 @@ class CreatorAgent(BaseAgent):
             context["character_count"] = payload.get("character_count", 8)
             context["character_depth"] = payload.get("character_depth", 5)
             context["target_word_count"] = payload.get("target_word_count", 50000)
-            context["genre"] = payload.get("genre", layer0_value(layer0, "genre"))
+            genre_name = payload.get("genre", layer0_value(layer0, "genre") or "")
+            context["naming_style_constraint"] = GENRE_NAMING_STYLES.get(genre_name, "角色名应为2-4字中文姓名，符合题材风格")
+            context["genre"] = genre_name
             context["sub_genre"] = payload.get("sub_genre", project_config.get("sub_genre", ""))
             context["theme"] = payload.get("theme", project_config.get("theme", ""))
             context["narrative_pov"] = payload.get("narrative_pov", project_config.get("narrative_pov", "third_person"))
@@ -889,6 +951,30 @@ class CreatorAgent(BaseAgent):
                 context["genre"] = payload.get("genre", "互动影游")
             if not context.get("style"):
                 context["style"] = payload.get("style", "写实")
+
+            context["world_setting"] = context.get("world_settings", "")
+            context["chapter_outline"] = context.get("chapter_info", "")
+            context["chapter_characters"] = context.get("character_states", "")
+            context["target_word_count"] = payload.get("target_word_count", project_config.get("target_word_count", 3000))
+
+            prev_scene = payload.get("previous_scene_content", "")
+            if prev_scene:
+                context["previous_scene_context"] = f"## 前序场景全文（必须衔接）\n{prev_scene}"
+            else:
+                context["previous_scene_context"] = "## 前序场景\n（这是第一个场景，需要以引人入胜的方式开场）"
+
+            ch_idx = payload.get("current_chapter_index", 0)
+            sc_idx = payload.get("current_scene_index", 0)
+            total_ch = payload.get("chapter_count", 10)
+            total_sc_in_ch = payload.get("scenes_in_chapter", 3)
+            if sc_idx == 0 and ch_idx == 0:
+                context["scene_position_info"] = "【重要】这是全剧的第一个场景，必须以引人入胜的开场开始——建立世界观氛围、引出核心矛盾、让读者产生强烈好奇心。禁止从剧情中间开始。"
+            elif sc_idx == 0:
+                context["scene_position_info"] = f"【重要】这是第{ch_idx+1}章的第一个场景，需要自然承接上一章的结尾，同时开启本章新的叙事弧。"
+            elif sc_idx >= total_sc_in_ch - 1:
+                context["scene_position_info"] = f"【重要】这是第{ch_idx+1}章的最后一个场景，需要为本章收尾，同时为下一章埋下悬念。"
+            else:
+                context["scene_position_info"] = f"这是第{ch_idx+1}章的第{sc_idx+1}个场景（共{total_sc_in_ch}个），需要推进剧情发展。"
 
         elif task.task_type in ("choice_designer", "branch_designer"):
             chars = await self.storage.get_character_states(project_id)
