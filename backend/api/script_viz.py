@@ -31,5 +31,5 @@ async def upload_parse_script(project_id: str, file: UploadFile = File(None), db
 
 
 @router.post("/script-viz/regenerate/{project_id}")
-async def regenerate_visual(project_id: str, data: dict = None, db: AsyncSession = Depends(get_db)):
+async def regenerate_visual(project_id: str, data: dict | None = None, db: AsyncSession = Depends(get_db)):
     return {"status": "ok", "message": "可视化重新生成完成", "project_id": project_id}

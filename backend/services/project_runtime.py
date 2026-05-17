@@ -4,9 +4,10 @@ from dataclasses import dataclass
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import flag_modified
 
 from models.project import Project
-from models.project_config import ProjectConfig
+from models.project_config import ProjectConfig, StoryPlan
 
 
 @dataclass(frozen=True)
@@ -60,3 +61,49 @@ async def load_project_runtime(db: AsyncSession, project_id) -> ProjectRuntimeVi
     config = config_result.scalar_one_or_none()
 
     return ProjectRuntimeView(project=project, config=config)
+
+
+async def get_story_plan(db: AsyncSession, project_id: str) -> StoryPlan | None:
+    result = await db.execute(
+        select(ProjectConfig).where(ProjectConfig.project_id == project_id)
+    )
+    config = result.scalar_one_or_none()
+    if not config:
+        return None
+    return StoryPlan.from_dict(config.story_plan)
+
+
+async def save_story_plan(db: AsyncSession, project_id: str, plan: StoryPlan) -> StoryPlan:
+    result = await db.execute(
+        select(ProjectConfig).where(ProjectConfig.project_id == project_id)
+    )
+    config = result.scalar_one_or_none()
+    if not config:
+        return None
+    config.story_plan = plan.to_dict()
+    flag_modified(config, "story_plan")
+    await db.commit()
+    return plan
+
+
+async def update_story_plan(db: AsyncSession, project_id: str, plan: StoryPlan) -> StoryPlan:
+    result = await db.execute(
+        select(ProjectConfig).where(ProjectConfig.project_id == project_id)
+    )
+    config = result.scalar_one_or_none()
+    if not config:
+        return None
+    existing = StoryPlan.from_dict(config.story_plan)
+    updated = StoryPlan(
+        core_logline=plan.core_logline if plan.core_logline else existing.core_logline,
+        theme_statement=plan.theme_statement if plan.theme_statement else existing.theme_statement,
+        character_arcs=plan.character_arcs if plan.character_arcs else existing.character_arcs,
+        plot_nodes=plan.plot_nodes if plan.plot_nodes else existing.plot_nodes,
+        foreshadow_routes=plan.foreshadow_routes if plan.foreshadow_routes else existing.foreshadow_routes,
+        emotion_curve_plan=plan.emotion_curve_plan if plan.emotion_curve_plan else existing.emotion_curve_plan,
+        choice_philosophy=plan.choice_philosophy if plan.choice_philosophy else existing.choice_philosophy,
+    )
+    config.story_plan = updated.to_dict()
+    flag_modified(config, "story_plan")
+    await db.commit()
+    return updated

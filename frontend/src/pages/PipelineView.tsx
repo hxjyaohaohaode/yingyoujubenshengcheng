@@ -57,8 +57,9 @@ interface TemplateInfo {
   phases: Array<{
     name: string
     human_gate: boolean
-    steps: Array<{ agent: string; skill: string }>
+    steps: number
   }>
+  scale_config: Record<string, unknown>
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
@@ -139,9 +140,9 @@ export default function PipelineView() {
             setTemplate(tpl)
             const phases = (tpl.phases || []).map((p, i) => ({
               name: p.name,
-              steps: p.steps.length,
+              steps: p.steps,
               humanGate: p.human_gate,
-              currentStep: i < data.current_phase ? p.steps.length : i === data.current_phase ? data.current_step : 0,
+              currentStep: i < data.current_phase ? p.steps : i === data.current_phase ? data.current_step : 0,
               status: i < data.current_phase ? 'completed' as const : i === data.current_phase ? 'running' as const : 'pending' as const,
             }))
             const completedCount = (data.task_results || []).filter(r => r.status === 'completed').length
@@ -498,10 +499,10 @@ export default function PipelineView() {
                           onChange={(v) => setRollbackStep(v)}
                           style={{ width: 80 }}
                           options={
-                            template?.phases?.[rollbackPhase]?.steps?.map((_, i) => ({
+                            Array.from({ length: template?.phases?.[rollbackPhase]?.steps || 0 }, (_, i) => ({
                               label: `步骤${i}`,
                               value: i,
-                            })) || []
+                            }))
                           }
                           placeholder="步骤"
                         />
@@ -541,10 +542,10 @@ export default function PipelineView() {
                           onChange={(v) => setRollbackStep(v)}
                           style={{ width: 80 }}
                           options={
-                            template?.phases?.[rollbackPhase]?.steps?.map((_, i) => ({
+                            Array.from({ length: template?.phases?.[rollbackPhase]?.steps || 0 }, (_, i) => ({
                               label: `步骤${i}`,
                               value: i,
-                            })) || []
+                            }))
                           }
                           placeholder="步骤"
                         />
@@ -609,7 +610,7 @@ export default function PipelineView() {
                     {phase.name}
                     {phase.human_gate && <span className="text-xs opacity-70"> [锁定]</span>}
                   </div>
-                  <div className="text-xs opacity-70">{phase.steps.length} 步骤</div>
+                  <div className="text-xs opacity-70">{phase.steps} 步骤</div>
                 </div>
               )
             })}

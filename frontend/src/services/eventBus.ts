@@ -46,6 +46,8 @@ export const DataEvents = {
   PROJECT_SWITCHED: 'data:project-switched',
   PROJECT_CONFIG_UPDATED: 'data:project-config-updated',
   WORLD_CONFIG_UPDATED: 'data:world-config-updated',
+  STORY_PLAN_CREATED: 'data:story-plan-created',
+  STORY_PLAN_UPDATED: 'data:story-plan-updated',
   AI_GENERATION_STARTED: 'ai:generation-started',
   AI_GENERATION_COMPLETED: 'ai:generation-completed',
   AI_AUDIT_STARTED: 'ai:audit-started',

@@ -47,6 +47,14 @@ INTERACTIVE_GAME_WRITING = """
 5. **情感锚点**：每3-5个场景必须有一个情感重场（角色关系发生质的改变）
 6. **分支预埋**：重要对白末尾暗示另一种可能（"如果你当时选了..."的既视感）
 7. **环境叙事**：场景本身应当传达故事信息（用场景说故事，不只用字说故事）
+
+【低分支高情感范式 — 选择设计必须遵守】
+
+1. **选择密度**：每章仅2-3个关键选择点，选择点之间用叙事和角色互动填充
+2. **道德灰度原则**：每个选择都没有完美答案——好选择有隐性代价，坏选择有合理动机，玩家必须在两个都不完美的选项间做出艰难抉择
+3. **隐藏选项**：每个关键选择点包含1个隐藏选项（is_hidden=true），隐藏选项是跳出二元对立的"第三条路"——创造性解法或非常规思路，需要特定前置条件解锁
+4. **分支层级控制**：选择导致的分支层级严格控制在3-4级以内，不同分支在3-4层内必须汇入主线（convergence），汇入点保留选择后果的痕迹但叙事重新聚焦主线
+5. **后果链推演**：每个选择的三层后果（直接→间接→远期）必须形成因果递进链，不能断裂
 """
 
 WORLD_CONFIG_CROSS_REFS = {
@@ -155,7 +163,7 @@ def build_world_gen_prompt(config_key: str, label: str, desc: str,
 - 如果关联配置项之间本身存在张力/矛盾，应在本配置项中体现这种张力的后果"""
 
     INTERACTIVE_ADAPTABILITY = """【互动影游适配性 — 每个方案必须包含】
-每个方案除了设定正文外，还必须包含以下三个维度的分析，确保世界观设定能直接服务于互动影游的玩法和叙事：
+每个方案除了设定正文外，还必须包含以下五个维度的分析，确保世界观设定能直接服务于互动影游的玩法和叙事：
 
 1. **【玩家选择影响】**：此设定如何影响玩家的选择空间？它为玩家提供了哪些新的决策维度？它限制了哪些选择？玩家的不同选择如何在此设定的框架下产生不同后果？（200-500字）
 
@@ -164,7 +172,18 @@ def build_world_gen_prompt(config_key: str, label: str, desc: str,
 3. **【信息层次】**：按"洋葱模型"三层描述此设定的信息分布：
    - 表层（普通NPC知道的）：大众认知版本，可能包含误解和偏见
    - 深层（内行人知道的）：专业人士/核心圈层的认知，接近但未触及终极真相
-   - 核心（终极真相）：极少数人知晓的真相，足以颠覆表层认知"""
+   - 核心（终极真相）：极少数人知晓的真相，足以颠覆表层认知
+
+4. **【选择倾向性】**：此设定中的核心矛盾如何映射到玩家的道德选择？分析以下要素：
+   - 道德光谱：此设定制造的核心矛盾在道德光谱上的位置（善/恶/灰度），以及为什么不是非黑即白
+   - 选择映射：世界观矛盾如何转化为玩家面临的具体道德困境——玩家站在矛盾的哪一方？每方的代价是什么？
+   - 倾向引导：设定如何自然引导玩家形成选择倾向，同时保留反转空间——看似"正确"的选择可能有隐性代价，看似"错误"的选择可能有合理动机（200-500字）
+
+5. **【分支触发条件】**：此设定中哪些具体元素可以在特定条件下触发隐藏分支？列出2-3个触发条件，每个需说明：
+   - 触发条件：什么具体的选择、行为、信息获取或关系状态会激活隐藏分支
+   - 隐藏内容：触发后揭示的隐藏设定/剧情/角色信息
+   - 触发概率：普通玩家自然触发的概率（高/中/低），以及为什么设定在这个概率
+   - 回望线索：触发后玩家回看前文能发现的暗示（每个50-150字）"""
 
     OUTPUT_FORMAT = """【回答格式】
 你必须在```json```代码块中输出严格的JSON数组，包含3个方案。每个方案是一个对象：
@@ -181,7 +200,12 @@ def build_world_gen_prompt(config_key: str, label: str, desc: str,
       "surface": "表层信息（普通NPC知道的，100-300字）",
       "deep": "深层信息（内行人知道的，100-300字）",
       "core": "核心真相（终极真相，100-300字）"
-    }
+    },
+    "choice_tendency_mapping": "【选择倾向性】（200-500字，核心矛盾如何映射到玩家道德选择：道德光谱位置+选择映射方式+倾向引导策略）",
+    "branch_trigger_conditions": [
+      "触发条件1：触发条件+隐藏内容+触发概率+回望线索（50-150字）",
+      "触发条件2：触发条件+隐藏内容+触发概率+回望线索（50-150字）"
+    ]
   }
 ]
 ```
@@ -248,7 +272,7 @@ def build_world_gen_prompt(config_key: str, label: str, desc: str,
 6. 语言优美、有画面感、避免教科书式的枯燥罗列
 7. **完整性优先**：每个方案必须有头有尾
 8. **交叉引用**：每个方案的content中必须显式引用关联配置项的核心设定，不得孤立创作
-9. **互动适配**：player_choice_impact、branch_points、info_layers必须与content中的设定严格对应，不能泛泛而谈
+9. **互动适配**：player_choice_impact、branch_points、info_layers、choice_tendency_mapping、branch_trigger_conditions必须与content中的设定严格对应，不能泛泛而谈
 
 请直接输出JSON数组，不要添加任何解释。"""
 
@@ -296,7 +320,7 @@ def build_world_gen_prompt(config_key: str, label: str, desc: str,
 5. 语言优美、有画面感、避免教科书式的枯燥罗列
 6. **完整性优先**：每个方案必须有头有尾，不能写到一半中断。如果篇幅有限，宁可减少细节数量，也要保证方案是完整的
 7. **交叉引用**：每个方案的content中必须显式引用关联配置项的核心设定，不得孤立创作
-8. **互动适配**：player_choice_impact、branch_points、info_layers必须与content中的设定严格对应，不能泛泛而谈
+8. **互动适配**：player_choice_impact、branch_points、info_layers、choice_tendency_mapping、branch_trigger_conditions必须与content中的设定严格对应，不能泛泛而谈
 
 请直接输出JSON数组，不要添加任何解释。"""
 
@@ -1065,6 +1089,184 @@ def build_chapter_outline_prompt(project_name: str, genre: str, tone: str,
     return system_prompt, user_prompt
 
 
+def _calc_story_scale_params(target_word_count: int, target_chapters: int) -> dict:
+    if target_word_count <= 30000:
+        return {
+            "scale_label": "短篇",
+            "recommended_chapters": max(3, min(10, target_chapters)),
+            "character_arc_count": "2-3",
+            "plot_node_count_range": f"{max(3, min(8, target_chapters))}",
+            "foreshadow_route_count": "2-3",
+            "foreshadow_reinforce_count": "1-2",
+            "complexity_guidance": "紧凑叙事，聚焦核心矛盾，伏笔精简但必须闭环，每条伏笔的reinforce不超过2次",
+        }
+    elif target_word_count <= 300000:
+        return {
+            "scale_label": "中篇",
+            "recommended_chapters": max(10, min(50, target_chapters)),
+            "character_arc_count": "3-5",
+            "plot_node_count_range": f"{max(8, min(20, target_chapters))}",
+            "foreshadow_route_count": "3-5",
+            "foreshadow_reinforce_count": "2-3",
+            "complexity_guidance": "中等复杂度，注意中期节奏把控，伏笔网络适度，每条伏笔的reinforce 2-3次",
+        }
+    else:
+        return {
+            "scale_label": "长篇",
+            "recommended_chapters": max(30, min(300, target_chapters)),
+            "character_arc_count": "5-8",
+            "plot_node_count_range": f"{max(15, min(50, target_chapters))}",
+            "foreshadow_route_count": "5-8",
+            "foreshadow_reinforce_count": "3-5",
+            "complexity_guidance": "长线布局，多线并行，伏笔网络密集，回收率≥80%，每条伏笔的reinforce 3-5次",
+        }
+
+
+def build_story_plan_prompt(
+    genre: str,
+    core_contradiction: str,
+    theme: str,
+    tone: str,
+    target_chapters: int,
+    target_word_count: int,
+    user_requirements: str = "",
+    intent_analysis: dict | None = None,
+    search_results: dict | None = None,
+) -> tuple[str, str]:
+    scale = _calc_story_scale_params(target_word_count, target_chapters)
+    intent_section = ""
+    if intent_analysis:
+        intent_section = f"""[意图] 用户意图分析：
+{json.dumps(intent_analysis, ensure_ascii=False, indent=2) if isinstance(intent_analysis, dict) else str(intent_analysis)}
+━━━━━━━━━━━━━━━━━━━━━━"""
+
+    search_section = ""
+    if search_results:
+        search_section = f"""[素材] 搜索参考素材：
+{json.dumps(search_results, ensure_ascii=False, indent=2) if isinstance(search_results, (dict, list)) else str(search_results)[:2000]}
+━━━━━━━━━━━━━━━━━━━━━━"""
+
+    system_prompt = f"""你是全球顶级的互动影游故事架构师，你的Story Plan是整个项目的叙事蓝图，所有后续创作（世界观、角色、伏笔、大纲、场景）都将严格遵循此蓝图执行。
+
+{CHINESE_WRITING_STANDARDS}
+
+{INTERACTIVE_GAME_WRITING}
+
+【Story Plan设计铁律】
+1. **核心梗概必须一句话点燃**：读完core_logline，制作人必须立刻说"这个故事我要做"
+2. **主题声明必须是道德悖论**：不是"正义终将战胜邪恶"这种废话，而是"为了拯救多数人，你是否愿意牺牲最爱的人"这种无解之问
+3. **角色弧线必须互锁**：每个主角的弧线终点必须是另一个主角弧线的起点或转折，形成角色之间的命运纠缠
+4. **情节节点必须因果递进**：每个节点必须由前一个节点的事件自然催生，不能出现"突然"的转折
+5. **伏笔路线必须闭环**：plant→reinforce→reveal路径必须完整，reinforce至少2次，reveal必须有"原来如此"的回望价值
+6. **情感曲线必须波浪起伏**：不能一路走高或一路走低，必须有高峰→低谷→更高峰→更深低谷→终极巅峰的节奏
+7. **选择哲学必须灰度**：每个重大选择都没有完美答案，好选择有隐性代价，坏选择有合理动机
+
+【规模适配 — 根据目标字数动态调整】
+当前项目规模：{scale['scale_label']}（{target_word_count}字）
+推荐章节数：{scale['recommended_chapters']}
+角色弧线数量：{scale['character_arc_count']}
+情节节点数量：≥{scale['plot_node_count_range']}
+伏笔路线数量：{scale['foreshadow_route_count']}
+伏笔强化次数：{scale['foreshadow_reinforce_count']}
+复杂度策略：{scale['complexity_guidance']}
+
+【回答格式 — 严格的JSON】
+在```json```代码块中输出：
+```json
+{{{{
+  "core_logline": "核心梗概（1-2句话，必须包含：主角是谁、面临什么困境、必须做出什么选择，如：一个失去记忆的执法者在追查连环凶案时发现，所有线索都指向自己——而真相可能比凶手更可怕）",
+  "theme_statement": "主题声明（一个道德悖论式的命题，如：当正义与生存不可兼得，你选择做一个死去的英雄还是一个活着的罪人？）",
+  "recommended_chapter_count": {scale['recommended_chapters']},
+  "character_arcs": [
+    {{{{
+      "role_name": "角色名",
+      "role_type": "protagonist|antagonist|love_interest|mentor|rival|wildcard",
+      "starting_state": "起点状态（角色在故事开始时的核心信念和行为模式，100-200字）",
+      "turning_point": "转折事件（打破角色原有信念的关键事件，100-200字）",
+      "ending_state": "终点状态（角色在故事结束时的核心信念和行为模式，100-200字）",
+      "arc_tension": "弧线张力描述（起点与终点之间的核心矛盾，50-100字）"
+    }}}}
+  ],
+  "plot_nodes": [
+    {{{{
+      "node_index": 1,
+      "title": "节点标题",
+      "description": "节点描述（200-500字，必须包含：触发条件、核心冲突、后果影响）",
+      "emotion_level": 1-10,
+      "chapter_range": "预计所在章节范围，如'1-2'",
+      "dependencies": ["依赖的前置节点index"]
+    }}}}
+  ],
+  "foreshadow_routes": [
+    {{{{
+      "foreshadow_name": "伏笔名称",
+      "plant_description": "埋设描述（在何时何地以何种方式埋设，100-200字）",
+      "reinforce_plan": [
+        {{{{"chapter_range": "章节范围", "method": "强化方式描述（50-100字）"}}}},
+        {{{{"chapter_range": "章节范围", "method": "强化方式描述（50-100字）"}}}}
+      ],
+      "reveal_description": "揭露描述（在何时何地以何种方式揭露，100-200字）",
+      "wow_factor": "回望价值描述（揭露后回看前文的恍然大悟体验，50-100字）"
+    }}}}
+  ],
+  "emotion_curve_plan": [
+    {{{{
+      "chapter_range": "章节范围，如'1-2'",
+      "emotion_target": 1-10,
+      "emotion_label": "情感标签（如：好奇/紧张/震撼/低谷/燃/泪点/终极高潮）",
+      "narrative_goal": "叙事目标（此阶段要达成的叙事任务，50-100字）"
+    }}}}
+  ],
+  "choice_philosophy": "选择哲学（200-500字，描述本项目的选择设计原则，必须包含：道德灰度原则、低分支高情感范式、信息差利用策略、选择后果的远期涟漪设计）"
+}}}}
+```
+
+【绝对禁止】
+- core_logline写成泛泛的题材描述（如"一个关于复仇的故事"）
+- theme_statement写成老生常谈的道德说教
+- 角色弧线之间互不关联
+- 情节节点之间缺乏因果链
+- 伏笔路线只有plant没有reinforce和reveal
+- 情感曲线一路走高或一路走低
+- choice_philosophy只写"道德灰度"四个字没有具体策略
+
+【必须遵守】
+- core_logline必须让人读完就想知道后续
+- theme_statement必须是一个无标准答案的道德悖论
+- 每个主角的弧线转折必须与其他角色的事件有关联
+- plot_nodes之间必须有明确的因果递进
+- foreshadow_routes的reinforce_plan至少2次
+- emotion_curve_plan必须覆盖全部{scale['recommended_chapters']}章
+- choice_philosophy必须给出具体可操作的选择设计原则"""
+
+    user_prompt = f"""请为以下互动影游项目生成完整的Story Plan：
+
+━━━━━━━━━━━━━━━━━━━━━━
+[题材] 题材：{genre or '未指定'}
+[矛盾] 核心矛盾：{core_contradiction or '未设定'}
+[主题] 主题方向：{theme or '未指定'}
+[基调] 基调：{tone or 'neutral'}
+[目标] 目标章节数：{target_chapters}
+[说明] 目标总字数：{target_word_count}
+━━━━━━━━━━━━━━━━━━━━━━
+{f'[需求] 用户需求：\n{user_requirements}\n━━━━━━━━━━━━━━━━━━━━━━' if user_requirements else ''}
+{intent_section}
+{search_section}
+
+【创作要求】
+1. core_logline必须1-2句话，包含主角、困境、选择三个要素
+2. theme_statement必须是道德悖论，没有标准答案
+3. character_arcs至少包含{scale['character_arc_count']}个主角（protagonist/antagonist/love_interest或wildcard），每个弧线的起点→转折→终点必须互锁
+4. plot_nodes至少包含{scale['plot_node_count_range']}个关键节点，覆盖开端→发展→高潮→结局
+5. foreshadow_routes至少包含{scale['foreshadow_route_count']}条全剧级伏笔路线，每条至少{scale['foreshadow_reinforce_count']}次reinforce
+6. emotion_curve_plan必须覆盖全部{scale['recommended_chapters']}章，情感目标必须波浪起伏
+7. choice_philosophy必须包含道德灰度原则、低分支高情感范式、信息差利用策略、远期涟漪设计
+
+请直接输出JSON，不要输出任何其他内容。"""
+
+    return system_prompt, user_prompt
+
+
 # ============================================================================
 #  场景生成升级标准（互动影游场景必须遵守）
 # ============================================================================
@@ -1331,6 +1533,288 @@ def build_scene_gen_prompt(
     return system_prompt, user_prompt
 
 
+SCENE_TRIPLE_JSON_SCHEMA = json.dumps({
+    "type": "object",
+    "properties": {
+        "character": {
+            "type": "object",
+            "properties": {
+                "identity": {"type": "string"},
+                "personality": {"type": "string"},
+                "current_state": {"type": "string"},
+                "core_motivation": {"type": "string"},
+                "choice_tendency": {"type": "string"}
+            },
+            "required": ["identity", "personality", "current_state", "core_motivation", "choice_tendency"]
+        },
+        "context": {
+            "type": "object",
+            "properties": {
+                "environment": {"type": "string"},
+                "time": {"type": "string"},
+                "previous_scene_ending": {"type": "string"},
+                "active_foreshadows": {"type": "array", "items": {"type": "string"}},
+                "worldview_constraints": {"type": "array", "items": {"type": "string"}}
+            },
+            "required": ["environment", "time", "previous_scene_ending", "active_foreshadows", "worldview_constraints"]
+        },
+        "goal": {
+            "type": "object",
+            "properties": {
+                "dramatic_function": {"type": "string", "enum": ["setup", "conflict", "turning_point", "climax", "resolution"]},
+                "foreshadows_to_advance": {"type": "array", "items": {"type": "string"}},
+                "character_changes_to_trigger": {"type": "array", "items": {"type": "string"}}
+            },
+            "required": ["dramatic_function", "foreshadows_to_advance", "character_changes_to_trigger"]
+        }
+    },
+    "required": ["character", "context", "goal"]
+}, ensure_ascii=False, indent=2)
+
+
+def build_scene_triple_prompt(character_info: dict, context_info: dict, goal_info: dict) -> tuple[str, str]:
+    dramatic_function_map = {
+        "setup": "铺垫",
+        "conflict": "冲突",
+        "turning_point": "转折",
+        "climax": "高潮",
+        "resolution": "收束",
+    }
+    dramatic_function_label = dramatic_function_map.get(
+        goal_info.get("dramatic_function", ""), goal_info.get("dramatic_function", "未设定")
+    )
+
+    character_block = (
+        f"【Character — 角色设定】\n"
+        f"- 身份：{character_info.get('identity', '未设定')}\n"
+        f"- 性格：{character_info.get('personality', '未设定')}\n"
+        f"- 当前状态：{character_info.get('current_state', '未设定')}\n"
+        f"- 核心动机：{character_info.get('core_motivation', '未设定')}\n"
+        f"- 选择倾向性：{character_info.get('choice_tendency', '未设定')}"
+    )
+
+    context_block = (
+        f"【Context — 场景背景】\n"
+        f"- 当前环境：{context_info.get('environment', '未设定')}\n"
+        f"- 时间：{context_info.get('time', '未设定')}\n"
+        f"- 前序场景结尾：{context_info.get('previous_scene_ending', '未设定')}\n"
+        f"- 活跃伏笔：{', '.join(context_info.get('active_foreshadows', [])) or '无'}\n"
+        f"- 世界观约束：{', '.join(context_info.get('worldview_constraints', [])) or '无'}"
+    )
+
+    goal_block = (
+        f"【Goal — 目标动因】\n"
+        f"- 场景戏剧功能：{dramatic_function_label}\n"
+        f"- 需推进伏笔：{', '.join(goal_info.get('foreshadows_to_advance', [])) or '无'}\n"
+        f"- 需触发角色变化：{', '.join(goal_info.get('character_changes_to_trigger', [])) or '无'}"
+    )
+
+    system_prompt = f"""你是全球顶尖的互动影游场景架构师，精通Character-Context-Goal三元提示架构。
+你的任务是基于三元结构生成高质量的场景方案，确保角色、背景、目标三维度深度耦合。
+
+{CHINESE_WRITING_STANDARDS}
+
+{INTERACTIVE_GAME_WRITING}
+
+【三元提示架构 — 核心原则】
+1. **Character驱动Context**：角色的身份和动机决定了TA对环境的感知方式——同一个地点，不同角色看到的东西完全不同
+2. **Context约束Goal**：场景背景中的伏笔和世界观约束限制了目标的实现路径——目标不能脱离背景孤立达成
+3. **Goal反向塑造Character**：场景的戏剧功能要求角色做出特定反应，这种反应必须与角色的选择倾向性一致或形成张力
+
+【三元耦合检验 — 每个方案必须通过】
+- Character的choice_tendency是否在Goal的dramatic_function中得到体现或挑战？
+- Context的active_foreshadows是否被Goal的foreshadows_to_advance覆盖？
+- Context的worldview_constraints是否限制了Goal的实现路径？
+- Goal的character_changes_to_trigger是否与Character的core_motivation形成因果？
+
+【输入JSON Schema】
+{SCENE_TRIPLE_JSON_SCHEMA}
+
+【输出格式 — 严格的JSON】
+在```json```代码块中输出：
+```json
+{{{{
+  "triple_analysis": {{{{
+    "character": {{{{
+      "identity": "角色身份",
+      "personality": "性格特征",
+      "current_state": "当前状态（情感/物理/信息状态）",
+      "core_motivation": "核心动机（本场景中最想达成什么）",
+      "choice_tendency": "选择倾向性（面对抉择时的默认倾向及原因）"
+    }}}},
+    "context": {{{{
+      "environment": "当前环境描述（感官细节+空间布局+氛围）",
+      "time": "时间（具体时刻+叙事节奏位置）",
+      "previous_scene_ending": "前序场景结尾（未解决的张力/悬念）",
+      "active_foreshadows": ["活跃伏笔1", "活跃伏笔2"],
+      "worldview_constraints": ["世界观约束1", "世界观约束2"]
+    }}}},
+    "goal": {{{{
+      "dramatic_function": "setup|conflict|turning_point|climax|resolution",
+      "foreshadows_to_advance": ["需推进的伏笔1", "需推进的伏笔2"],
+      "character_changes_to_trigger": ["需触发的角色变化1", "需触发的角色变化2"]
+    }}}}
+  }}}},
+  "coupling_analysis": "三元耦合分析（300-500字，说明Character/Context/Goal如何相互驱动和约束）",
+  "scene_blueprint": "场景蓝图（500-1000字，基于三元结构生成的场景框架：开场画面→核心冲突→情感转折→收束方式）",
+  "key_moments": [
+    {{{{"moment_type": "setup|conflict|turning_point|climax|resolution", "description": "关键时刻描述（100-200字）", "character_action": "角色在此时刻的行为及动机", "emotional_beat": "情感节拍"}}}}
+  ],
+  "dialogue_sketches": [
+    {{{{"character": "角色名", "surface": "字面台词", "subtext": "潜台词", "emotion_tone": "情感底色"}}}}
+  ]
+}}}}
+```
+
+【绝对禁止】
+- 三元结构中任何一元与另外两元脱节
+- 场景蓝图不体现三元耦合分析的结果
+- 角色的选择倾向性与场景戏剧功能无关
+- 伏笔推进不与活跃伏笔对应
+- 角色变化不与核心动机关联"""
+
+    user_prompt = f"""请基于以下三元结构生成场景方案：
+
+━━━━━━━━━━━━━━━━━━━━━━
+{character_block}
+━━━━━━━━━━━━━━━━━━━━━━
+{context_block}
+━━━━━━━━━━━━━━━━━━━━━━
+{goal_block}
+━━━━━━━━━━━━━━━━━━━━━━
+
+【创作要求】
+1. 三元结构必须深度耦合——Character的动机驱动场景走向，Context的约束限制实现路径，Goal的功能要求角色做出特定反应
+2. coupling_analysis必须具体说明三元如何相互驱动和约束，不能泛泛而谈
+3. scene_blueprint必须基于三元耦合分析的结果，不能脱离分析独立创作
+4. key_moments必须覆盖Goal中dramatic_function的完整弧线
+5. dialogue_sketches必须反映Character的choice_tendency和core_motivation
+6. 活跃伏笔必须在scene_blueprint中得到推进
+7. 世界观约束必须限制角色的行动空间
+
+请直接输出JSON，不要输出任何其他内容。"""
+
+    return system_prompt, user_prompt
+
+
+def build_dialogue_prompt(scene_narration: str, characters: list, scene_goal: str) -> tuple[str, str]:
+    char_lines = []
+    for c in characters:
+        parts = [f"【{c.get('name', '?')}】"]
+        if c.get('language_style'):
+            parts.append(f"  语言风格：{c['language_style']}")
+        if c.get('catchphrase'):
+            parts.append(f"  口头禅：{c['catchphrase']}")
+        if c.get('personality_traits'):
+            parts.append(f"  性格特征：{c['personality_traits']}")
+        if c.get('core_goal'):
+            parts.append(f"  核心动机：{c['core_goal']}")
+        if c.get('core_fear'):
+            parts.append(f"  核心恐惧：{c['core_fear']}")
+        if c.get('surface_image'):
+            parts.append(f"  表层印象：{c['surface_image']}")
+        if c.get('true_self'):
+            parts.append(f"  真实自我：{c['true_self']}")
+        if c.get('dark_secret'):
+            parts.append(f"  隐藏秘密：{c['dark_secret']}")
+        char_lines.append("\n".join(parts))
+    character_context = "\n\n".join(char_lines) if char_lines else "  （暂无角色信息）"
+
+    system_prompt = f"""你是全球顶尖的互动影游对白编剧，你的对白让角色"活过来"——每句话都承载着字面之下的暗流。
+
+{CHINESE_WRITING_STANDARDS}
+
+{INTERACTIVE_GAME_WRITING}
+
+【对白三层架构 — 每句对白必须包含】
+1. **surface（字面层）**：角色实际说出口的台词文本
+   - 必须反映角色的language_style（句式长短、用词范围、语速、语气词）
+   - 必须包含或呼应角色的口头禅（catchphrase），自然融入而非生硬插入
+   - 字面意思可以与真实意图一致，但更常见的是存在落差
+
+2. **subtext（潜台词层）**：角色话语背后的真实意图
+   - 字面意思与潜台词之间必须存在落差（角色永远口是心非）
+   - 潜台词必须根植于角色的core_motivation或core_fear
+   - 潜台词可以揭示角色的true_self或dark_secret的某个侧面
+   - 不同角色对同一句台词的潜台词理解可以不同（信息差）
+
+3. **emotion_tone（情感底色）**：角色说话时的情感基调
+   - 不是台词本身的情感，而是角色在此刻的内在情感状态
+   - 情感底色可以与字面意思一致，也可以完全相反（强颜欢笑、故作镇定）
+   - 情感底色必须与角色在场景中的处境和关系状态一致
+
+【对白功能铁律 — 每句对白必须满足至少一项】
+1. **推进场景目标**：对白必须推进scene_goal中定义的场景目标
+2. **揭示角色内心**：对白必须揭示角色surface_image与true_self之间的落差
+3. **制造信息差**：对白必须让不同角色掌握不同信息，为后续冲突埋线
+4. **强化关系张力**：对白必须体现角色之间的关系状态（信任/怀疑/依赖/对抗）
+
+【对白节奏规范】
+- 短句（<15字）制造紧张感，用于冲突和转折
+- 长句（>30字）营造沉浸感，用于铺垫和回忆
+- 沉默也是对白——用"……"或动作描写代替台词，表达无法言说的情感
+- 每段对白不超过5句，超过必须用动作/叙述打断
+
+【输出格式 — 严格的JSON】
+在```json```代码块中输出：
+```json
+{{{{
+  "dialogue_sequence": [
+    {{{{
+      "character": "角色名",
+      "surface": "角色实际说出口的完整台词",
+      "subtext": "潜台词/真实意图（字面意思与真实意图的落差）",
+      "emotion_tone": "情感底色（角色此刻的内在情感状态）",
+      "language_style_ref": "语言风格标注（如：言简意赅/文绉绉/口语化）",
+      "catchphrase_ref": "口头禅引用（如有，标注口头禅内容；无则填空字符串）",
+      "function": "推进场景目标|揭示角色内心|制造信息差|强化关系张力",
+      "target_character": "对谁说话（如为自言自语则填'自语'）"
+    }}}}
+  ],
+  "dialogue_rhythm_analysis": "对白节奏分析（200-400字，说明对白如何通过长短句交替、沉默运用、情感递进控制场景节奏）",
+  "subtext_network": "潜台词网络分析（200-400字，说明各角色潜台词之间的交叉、冲突、信息差如何形成暗流网络）",
+  "goal_advancement": "场景目标推进分析（200-400字，说明对白序列如何推进scene_goal，哪些对白是关键推进点）"
+}}}}
+```
+
+【绝对禁止】
+- 对白没有潜台词（字面意思=真实意图）
+- 对白不反映角色的language_style
+- 对白不包含或呼应角色的口头禅
+- 对白既不推进场景目标，也不揭示角色内心
+- 所有角色的说话方式千篇一律
+- 情感底色与角色处境矛盾（无理由的矛盾）
+- 对白序列没有节奏变化"""
+
+    user_prompt = f"""请为以下场景生成完整的对白序列：
+
+━━━━━━━━━━━━━━━━━━━━━━
+[场景] 场景叙述：
+{scene_narration}
+━━━━━━━━━━━━━━━━━━━━━━
+[角色] 角色信息：
+{character_context}
+━━━━━━━━━━━━━━━━━━━━━━
+[目标] 场景目标：
+{scene_goal}
+━━━━━━━━━━━━━━━━━━━━━━
+
+【创作要求】
+1. 每句对白必须包含surface、subtext、emotion_tone三层
+2. surface必须反映角色的language_style和catchphrase
+3. subtext必须与surface存在落差，根植于角色的core_motivation或core_fear
+4. emotion_tone必须与角色在场景中的处境一致
+5. 每句对白必须推进场景目标或揭示角色内心
+6. 不同角色的说话方式必须有明显区分度
+7. 对白序列必须有节奏变化（长短句交替、沉默运用）
+8. 潜台词之间必须形成交叉和冲突的暗流网络
+9. 对白数量不少于8句，不超过20句
+
+请直接输出JSON，不要输出任何其他内容。"""
+
+    return system_prompt, user_prompt
+
+
 def build_wow_plan_prompt(foreshadow_context: str, character_context: str,
                            core_truth: str = "", worldview_context: str = "") -> tuple[str, str]:
     """
@@ -1486,6 +1970,36 @@ G. 总体完成度（completion）"""
     return system_prompt, user_prompt
 
 
+def _calc_foreshadow_scale_params(chapter_count: int) -> dict:
+    if chapter_count <= 10:
+        return {
+            "global_range": "2-3",
+            "chapter_range": "5-10",
+            "scene_range": "8-15",
+            "global_reinforce": "1-2",
+            "chapter_reinforce": "1-2",
+            "total_range": "15-28",
+        }
+    elif chapter_count <= 50:
+        return {
+            "global_range": "5-8",
+            "chapter_range": "15-25",
+            "scene_range": "20-40",
+            "global_reinforce": "3-5",
+            "chapter_reinforce": "1-3",
+            "total_range": "40-73",
+        }
+    else:
+        return {
+            "global_range": "8-12",
+            "chapter_range": "25-50",
+            "scene_range": "40-80",
+            "global_reinforce": "3-5",
+            "chapter_reinforce": "2-3",
+            "total_range": "73-142",
+        }
+
+
 def build_foreshadow_design_prompt(
     core_truth: str,
     core_contradiction: str,
@@ -1500,6 +2014,7 @@ def build_foreshadow_design_prompt(
     从核心真相反推，设计全剧级/章节级/场景级三层伏笔，
     每条伏笔包含三层含义、世界观关联、角色关联、伏笔间关联、回收路径。
     """
+    fs_scale = _calc_foreshadow_scale_params(chapter_count)
     dim_keys = get_genre_dimensions(genre) if genre else ["core_contradiction", "social_structure", "tech_magic", "geography", "history", "culture", "constraints", "impossible"]
     world_parts = []
     for key in dim_keys:
@@ -1549,19 +2064,19 @@ def build_foreshadow_design_prompt(
 
 【三层伏笔体系 — 数量硬性要求】
 
-### 第一层：全剧级伏笔（Global Level，5-8条）
+### 第一层：全剧级伏笔（Global Level，{fs_scale['global_range']}条）
 - 埋设点在全剧前10%，回收点在全剧后20%
-- 每条伏笔在全剧中需有3-5次强化（reinforce）
+- 每条伏笔在全剧中需有{fs_scale['global_reinforce']}次强化（reinforce）
 - 每条伏笔必须具备三层结构（surface_layer/deep_layer/truth_layer）
 - 必须包含 wow_factor：描述回看前文恍然大悟的全新体验
 - 必须与核心真相直接关联
 
-### 第二层：章节级伏笔（Chapter Level，15-25条）
+### 第二层：章节级伏笔（Chapter Level，{fs_scale['chapter_range']}条）
 - 跨越3-5个章节，在A埋设、B强化、C回收
 - 看似无关紧要的细节，实则为关键线索
 - 必须与世界观设定或角色动机深度关联
 
-### 第三层：场景级伏笔（Scene Level，20-40条）
+### 第三层：场景级伏笔（Scene Level，{fs_scale['scene_range']}条）
 - 在单一章节内完成埋设与回收
 - 形式：双关语、环境描写的隐藏线索、角色行为的矛盾细节
 - 为全剧级和章节级伏笔提供强化素材
@@ -1597,11 +2112,18 @@ def build_foreshadow_design_prompt(
 3. 伏笔的truth_layer必须与世界观深层设定或角色隐藏秘密直接关联
 4. 伏笔的surface_layer不得与世界观约束条件矛盾
 
-【回收路径规划 — 每条伏笔必须标注】
+【回收路径规划 — 每条伏笔必须标注完整plant→reinforce→reveal路径】
 - plant_location：埋设位置（格式"章节.节"，如"3.2"表示第3章第2节）
 - reinforce_locations：强化位置列表（格式同上，全剧级3-5个，章节级1-3个）
 - reveal_location：揭露位置（格式同上）
 - reclaim_status：回收状态（planted/reinforced/revealed/unplanted）
+- reinforce_triggers：每个reinforce的触发条件（哪些选择/事件/关系变化触发强化，必须具体到可判定的叙事条件）
+- reveal_triggers：reveal的触发条件（哪些选择/事件/信息获取触发揭露，必须具体到可判定的叙事条件）
+- expected_emotional_effect：揭露时玩家的预期情感反应（如：震惊/恍然大悟/心碎/恐惧/释然，以及为什么会产生这种反应）
+
+【伏笔与Story Plan双向关联 — 每条伏笔必须标注】
+- character_arc_refs：与角色弧线的双向关联（伏笔如何推动角色弧线变化，角色弧线变化如何触发伏笔的reinforce/reveal）
+- plot_node_refs：与情节节点的双向关联（伏笔如何影响情节走向，情节节点如何为伏笔提供reinforce/reveal的契机）
 
 【哇塞方案预设计】
 每条全剧级和章节级伏笔必须预设计2-3个"哇塞时刻"方案：
@@ -1631,6 +2153,11 @@ def build_foreshadow_design_prompt(
       "reinforce_locations": ["5.2", "8.3", "12.1"],
       "reveal_location": "18.2",
       "reclaim_status": "unplanted",
+      "reinforce_triggers": [{{"location": "5.2", "trigger": "触发强化的具体条件（选择/事件/关系变化）"}}],
+      "reveal_triggers": [{{"trigger": "触发揭露的具体条件（选择/事件/信息获取）"}}],
+      "expected_emotional_effect": "揭露时玩家的预期情感反应及原因（100-200字）",
+      "character_arc_refs": [{{"character_name": "角色名", "arc_stage": "弧线阶段", "foreshadow_impact_on_arc": "伏笔如何推动弧线变化", "arc_impact_on_foreshadow": "弧线变化如何触发伏笔"}}],
+      "plot_node_refs": [{{"plot_node": "情节节点描述", "foreshadow_impact_on_plot": "伏笔如何影响情节走向", "plot_impact_on_foreshadow": "情节节点如何为伏笔提供契机"}}],
       "wow_factor": "回看体验描述（仅全剧级/章节级需要）",
       "wow_plans": [
         {{"type": "身份反转|信息反转|情境反转|情感爆发|多线交汇|真相揭露", "title": "方案名称", "summary": "核心设定（200-500字）", "emotional_impact": "情感冲击描述", "score": 85}}
@@ -1651,7 +2178,7 @@ def build_foreshadow_design_prompt(
 ```
 
 【重要：防止截断】
-- 伏笔总数预计在40-70条之间，请确保完整性
+- 伏笔总数预计在{fs_scale['total_range']}条之间，请确保完整性
 - 场景级伏笔每条50-150字即可，三层含义用简短一句话概括
 - 优先保证全剧级和章节级伏笔的完整性和深度
 - 如果篇幅有限，场景级伏笔数量可以适当减少，但全剧级和章节级必须达标
@@ -1675,21 +2202,28 @@ def build_foreshadow_design_prompt(
 ━━━━━━━━━━━━━━━━━━━━━━
 
 【创作要求 — 硬性指标】
-1. **全剧级伏笔5-8条**：每条必须与核心真相直接关联，必须有3-5个reinforce_locations
-2. **章节级伏笔15-25条**：每条必须与世界观设定或角色动机深度关联
-3. **场景级伏笔20-40条**：每条必须包含三层含义，描述可精简（50-150字/条）
+1. **全剧级伏笔{fs_scale['global_range']}条**：每条必须与核心真相直接关联，必须有{fs_scale['global_reinforce']}个reinforce_locations
+2. **章节级伏笔{fs_scale['chapter_range']}条**：每条必须与世界观设定或角色动机深度关联
+3. **场景级伏笔{fs_scale['scene_range']}条**：每条必须包含三层含义，描述可精简（50-150字/条）
 4. **回收率≥80%**：核心伏笔（全剧级+章节级）必须有完整的plant→reinforce→reveal路径
 5. **四类关联**：伏笔之间必须建立DEPENDS_ON/SUPPORTS/ENABLES/CONFLICTS_WITH关联
 6. **世界观绑定**：每条伏笔必须标注worldview_refs
 7. **角色绑定**：每条伏笔必须标注character_refs
 8. **哇塞方案**：全剧级和章节级伏笔必须预设计2-3个wow_plans
+9. **触发条件**：每条伏笔必须标注reinforce_triggers和reveal_triggers，触发条件必须具体到可判定的叙事条件（哪些选择/事件/关系变化/信息获取触发）
+10. **预期情感效果**：每条伏笔必须标注expected_emotional_effect，说明揭露时玩家的预期情感反应及原因
+11. **角色弧线双向关联**：每条伏笔必须标注character_arc_refs，说明伏笔如何推动角色弧线变化、角色弧线变化如何触发伏笔
+12. **情节节点双向关联**：每条伏笔必须标注plot_node_refs，说明伏笔如何影响情节走向、情节节点如何为伏笔提供契机
 
 【创作要求 — 质量指标】
-9. 从核心真相反推，设计揭露路径（revelation_path）
-10. 伏笔之间形成网络而非孤立存在
-11. 每条伏笔的三层含义之间必须有逻辑递进关系
-12. 场景级伏笔要为上级伏笔提供强化素材
-13. **完整性优先**：所有字段必须填写完整，JSON结构必须正确闭合
+13. 从核心真相反推，设计揭露路径（revelation_path）
+14. 伏笔之间形成网络而非孤立存在
+15. 每条伏笔的三层含义之间必须有逻辑递进关系
+16. 场景级伏笔要为上级伏笔提供强化素材
+17. **完整性优先**：所有字段必须填写完整，JSON结构必须正确闭合
+18. **触发条件可判定**：reinforce_triggers和reveal_triggers必须是具体的、可判定的叙事条件，不能是模糊描述
+19. **情感效果可预期**：expected_emotional_effect必须基于伏笔的三层含义和揭露方式推演，不能泛泛而谈
+20. **双向关联可追溯**：character_arc_refs和plot_node_refs必须形成双向因果链，不能只有单向影响
 
 请直接输出JSON，不要输出任何其他内容。"""
 

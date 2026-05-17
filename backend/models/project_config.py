@@ -1,9 +1,49 @@
 import uuid
+from dataclasses import dataclass, field
 from sqlalchemy import Column, String, Integer, Float, JSON, DateTime, Boolean, Text, ForeignKey
 from sqlalchemy.orm import relationship
 from datetime import datetime, UTC
 
 from database import Base
+
+
+@dataclass
+class StoryPlan:
+    core_logline: str = ""
+    theme_statement: str = ""
+    recommended_chapter_count: int = 0
+    character_arcs: list[dict] = field(default_factory=list)
+    plot_nodes: list[dict] = field(default_factory=list)
+    foreshadow_routes: list[dict] = field(default_factory=list)
+    emotion_curve_plan: list[dict] = field(default_factory=list)
+    choice_philosophy: str = ""
+
+    def to_dict(self) -> dict:
+        return {
+            "core_logline": self.core_logline,
+            "theme_statement": self.theme_statement,
+            "recommended_chapter_count": self.recommended_chapter_count,
+            "character_arcs": self.character_arcs,
+            "plot_nodes": self.plot_nodes,
+            "foreshadow_routes": self.foreshadow_routes,
+            "emotion_curve_plan": self.emotion_curve_plan,
+            "choice_philosophy": self.choice_philosophy,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "StoryPlan":
+        if data is None:
+            return cls()
+        return cls(
+            core_logline=data.get("core_logline", ""),
+            theme_statement=data.get("theme_statement", ""),
+            recommended_chapter_count=data.get("recommended_chapter_count", 0),
+            character_arcs=data.get("character_arcs", []),
+            plot_nodes=data.get("plot_nodes", []),
+            foreshadow_routes=data.get("foreshadow_routes", []),
+            emotion_curve_plan=data.get("emotion_curve_plan", []),
+            choice_philosophy=data.get("choice_philosophy", ""),
+        )
 
 
 class ProjectConfig(Base):
@@ -54,8 +94,10 @@ class ProjectConfig(Base):
     enable_conflict_tracking = Column(Boolean, default=True, comment="是否启用冲突追踪")
     enable_satisfaction_tracking = Column(Boolean, default=True, comment="是否启用爽点追踪")
 
-    custom_evaluation_weights = Column(JSON, default=None, comment="自定义评估权重，如{'foreshadow_recovery': 0.2, ...}")
-    custom_checker_rules = Column(JSON, default=None, comment="自定义检测规则")
+    story_plan = Column(JSON, default=None)
+
+    custom_evaluation_weights = Column(JSON, default=None)
+    custom_checker_rules = Column(JSON, default=None)
 
     creator_prompt_template = Column(Text, default="", comment="自定义创作者Prompt模板")
     auditor_prompt_template = Column(Text, default="", comment="自定义审计师Prompt模板")

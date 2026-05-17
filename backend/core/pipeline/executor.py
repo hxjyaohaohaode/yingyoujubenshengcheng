@@ -25,6 +25,10 @@ from core.agent.registry import get_agent
 from .template import PipelineTemplate, Step, Phase
 from .state_machine import PipelineStateMachine, PipelineStatus
 
+from core.narrative.memory_loader import build_narrative_context
+from core.narrative.memory_extractor import extract_and_update_memory
+from core.narrative.coherence_checker import run_full_coherence_check
+from core.narrative.revision_orchestrator import DramaturgeRefiner, DramaturgeReport
 from config import DATABASE_URL
 
 _IS_SQLITE = DATABASE_URL.startswith("sqlite")
@@ -540,6 +544,75 @@ class PipelineExecutor:
                     "overall": "fail",
                     "issues": audit_result.issues or ["审计未通过"],
                 }
+
+            _scene_content_str = ""
+            try:
+                _narrative_ctx = await build_narrative_context(self.db, project_id)
+                _scp = []
+                _narr = scene_data.get("narration", "")
+                if _narr:
+                    _scp.append(_narr)
+                _dlg = scene_data.get("dialogue", [])
+                if isinstance(_dlg, list):
+                    _scp.extend(f"{d.get('char', '?')}: {d.get('text', '')}" for d in _dlg if isinstance(d, dict))
+                elif _dlg:
+                    _scp.append(str(_dlg))
+                _acts = scene_data.get("actions", [])
+                if isinstance(_acts, list):
+                    _scp.extend(str(a) for a in _acts)
+                elif _acts:
+                    _scp.append(str(_acts))
+                _scene_content_str = "\n".join(_scp)
+
+                _coherence_report = await run_full_coherence_check(
+                    self.db, project_id, scene_id, _scene_content_str, _narrative_ctx
+                )
+
+                if not _coherence_report.all_passed:
+                    _all_issues = []
+                    _all_suggestions = []
+                    for _chk in _coherence_report.checks:
+                        if not _chk.passed:
+                            _all_issues.extend(_chk.issues)
+                            _all_suggestions.extend(_chk.suggestions)
+                    return {
+                        "overall": "fail",
+                        "issues": _all_issues or ["5层逻辑校验未通过"],
+                        "suggestions": _all_suggestions,
+                    }
+            except Exception as _ce:
+                logger.warning("5层逻辑校验执行失败: %s", _ce)
+
+            try:
+                _refiner = DramaturgeRefiner(self.db, project_id)
+                _drama_scenes = [{"scene_id": scene_id, "content": _scene_content_str}]
+                _drama_report: DramaturgeReport = await _refiner.run_dramaturge_refinement(_drama_scenes)
+
+                _drama_data = {
+                    "global_review_score": _drama_report.global_review.overall_score,
+                    "global_review_summary": _drama_report.global_review.summary,
+                    "scene_defect_count": sum(len(sr.defects) for sr in _drama_report.scene_reviews),
+                    "revision_count": len(_drama_report.revisions),
+                    "final_status": _drama_report.final_status,
+                    "iterations": _drama_report.iterations,
+                }
+
+                await self._persist_dramaturge_record(project_id, scene_id, _drama_report, _drama_data)
+
+                if _drama_report.final_status == "needs_manual_review":
+                    _drama_issues = []
+                    for sr in _drama_report.scene_reviews:
+                        for defect in sr.defects:
+                            _drama_issues.append(f"[{defect.defect_type}] {defect.description}")
+                    if _drama_issues:
+                        return {
+                            "overall": "fail",
+                            "issues": _drama_issues[:5],
+                            "suggestions": [d.suggestion for sr in _drama_report.scene_reviews for d in sr.defects if d.suggestion][:5],
+                        }
+            except Exception as _de:
+                logger.warning("Dramaturge精炼执行失败（非致命）: %s", _de)
+
             return {"overall": "pass", "issues": []}
         except Exception as e:
             logger.error("自动审计失败，按失败处理: %s", e)
@@ -558,8 +631,8 @@ class PipelineExecutor:
                 overall = audit_result.get("overall", "pass")
 
             data = {}
-            if hasattr(audit_result, 'data') and isinstance(audit_result.data, dict):
-                data = audit_result.data
+            if hasattr(audit_result, 'data') and isinstance(getattr(audit_result, 'data', None), dict):
+                data = getattr(audit_result, 'data', {})
             elif isinstance(audit_result, dict):
                 data = audit_result
 
@@ -569,8 +642,8 @@ class PipelineExecutor:
             issues = data.get("issues", [])
             suggestions = data.get("suggestions", [])
 
-            if hasattr(audit_result, 'issues') and audit_result.issues:
-                issues = audit_result.issues
+            if hasattr(audit_result, 'issues') and getattr(audit_result, 'issues', None):
+                issues = getattr(audit_result, 'issues', [])
 
             audit_id = str(_uuid.uuid4())
             now_expr = "datetime('now')" if _IS_SQLITE else "NOW()"
@@ -600,6 +673,46 @@ class PipelineExecutor:
             logger.info("Audit record persisted: scene=%s, overall=%s", scene_id, overall)
         except Exception as e:
             logger.warning("持久化审计记录失败: %s", str(e))
+
+    async def _persist_dramaturge_record(self, project_id: str, scene_id: str,
+                                          report: DramaturgeReport, summary_data: dict):
+        try:
+            import uuid as _uuid
+            from datetime import UTC, datetime as _dt
+
+            audit_id = str(_uuid.uuid4())
+            now_expr = "datetime('now')" if _IS_SQLITE else "NOW()"
+
+            rhythm_issues = [{"severity": i.get("severity", ""), "description": i.get("description", "")} for i in report.global_review.rhythm_issues]
+            char_arc_issues = [{"severity": i.get("severity", ""), "description": i.get("description", "")} for i in report.global_review.character_arc_issues]
+            scene_defects = [{"type": d.defect_type, "priority": d.priority, "description": d.description} for sr in report.scene_reviews for d in sr.defects]
+            revisions = [{"granularity": r.granularity, "target": r.target, "description": r.description} for r in report.revisions]
+
+            await self.db.execute(
+                sa_text(
+                    f"""INSERT INTO audit_records
+                    (id, project_id, scene_id, audit_type, checker_results,
+                     llm_results, creative_scores, overall_result, issues, suggestions, created_at)
+                    VALUES (:id, :pid, :sid, :atype, :checker,
+                            :llm, :creative, :overall, :issues, :suggestions, {now_expr})"""
+                ),
+                {
+                    "id": audit_id,
+                    "pid": project_id,
+                    "sid": scene_id,
+                    "atype": "dramaturge_refinement",
+                    "checker": json.dumps({"rhythm_issues": rhythm_issues, "character_arc_issues": char_arc_issues}, ensure_ascii=False),
+                    "llm": json.dumps(scene_defects, ensure_ascii=False),
+                    "creative": json.dumps(revisions, ensure_ascii=False),
+                    "overall": "pass" if report.final_status == "passed" else "fail",
+                    "issues": json.dumps([d.description for sr in report.scene_reviews for d in sr.defects], ensure_ascii=False),
+                    "suggestions": json.dumps([d.suggestion for sr in report.scene_reviews for d in sr.defects if d.suggestion], ensure_ascii=False),
+                },
+            )
+            await self.db.commit()
+            logger.info("Dramaturge record persisted: scene=%s, status=%s", scene_id, report.final_status)
+        except Exception as e:
+            logger.warning("持久化Dramaturge记录失败: %s", str(e))
 
     async def _db_keepalive(self):
         try:
@@ -820,6 +933,7 @@ class PipelineExecutor:
             return False
 
     SKILL_TO_DEP_BLOCKER = {
+        "world_builder": "story_planner",
         "character_designer": "world_builder",
         "relation_network_designer": "character_designer",
         "foreshadow_designer": "world_builder",
@@ -935,6 +1049,7 @@ class PipelineExecutor:
         return {"status": "completed", "message": "完成"}
 
     STEP_DEPENDENCIES = {
+        "world_builder": ["story_planner"],
         "character_designer": ["world_builder"],
         "relation_network_designer": ["character_designer"],
         "foreshadow_designer": ["world_builder", "character_designer"],
@@ -958,7 +1073,9 @@ class PipelineExecutor:
         missing = []
         for dep_skill in deps:
             flag_key = f"layer0_{dep_skill}_built"
-            if flag_key == "layer0_world_builder_built":
+            if flag_key == "layer0_story_planner_built":
+                flag_key = "layer0_story_plan_built"
+            elif flag_key == "layer0_world_builder_built":
                 flag_key = "layer0_world_built"
             elif flag_key == "layer0_character_designer_built":
                 flag_key = "layer0_characters_built"
@@ -1015,6 +1132,14 @@ class PipelineExecutor:
                 agent = get_agent(step.agent, self.gateway, self.rag, self.storage)
 
                 payload = self._build_payload(project_id, step, state)
+
+                if step.skill == "scene_writer":
+                    try:
+                        _narrative_ctx = await build_narrative_context(self.db, project_id)
+                        if _narrative_ctx:
+                            payload["narrative_context"] = _narrative_ctx
+                    except Exception as _ne:
+                        logger.warning("加载叙事记忆失败: %s", _ne)
 
                 task = AgentTask(
                     task_id=f"{project_id}_{phase.name}_{step.skill}_{state.current_step_index}",
@@ -1086,9 +1211,47 @@ class PipelineExecutor:
                     "retryable": is_network_error,
                 }
 
+        return {"status": "failed", "error": "unexpected code path"}
+
     async def _persist_result(self, project_id: str, skill: str, data: dict, state):
         try:
-            if skill == "world_builder":
+            if skill == "story_planner":
+                sp_raw = data.get("story_plan", data.get("plan", ""))
+                sp_parsed = None
+                if isinstance(sp_raw, dict) and sp_raw:
+                    sp_parsed = sp_raw
+                elif isinstance(sp_raw, str) and len(sp_raw) > 10:
+                    sp_parsed = parse_llm_json(sp_raw)
+                if not sp_parsed:
+                    for v in data.values():
+                        if isinstance(v, dict) and "core_logline" in v:
+                            sp_parsed = v
+                            break
+                if sp_parsed and isinstance(sp_parsed, dict):
+                    from models.project_config import StoryPlan
+                    from services.project_runtime import save_story_plan
+                    plan = StoryPlan.from_dict(sp_parsed)
+                    await save_story_plan(self.db, project_id, plan)
+                    await self.state_machine.update_result_data(project_id, "story_plan", sp_parsed)
+                    await self.state_machine.update_result_data(project_id, "layer0_story_plan_built", True)
+                    rec_ch = sp_parsed.get("recommended_chapter_count", 0)
+                    if isinstance(rec_ch, int) and rec_ch > 0:
+                        await self.state_machine.update_result_data(project_id, "chapter_count", rec_ch)
+                        twc = state.result_data.get("target_word_count", 50000)
+                        wpc_min = max(1500, twc // rec_ch - 1000)
+                        wpc_max = max(3000, twc // rec_ch + 2000)
+                        await self.state_machine.update_result_data(project_id, "min_words_per_chapter", wpc_min)
+                        await self.state_machine.update_result_data(project_id, "max_words_per_chapter", wpc_max)
+                    await self._notify_data_changed(project_id, "story_plan_created", {
+                        "core_logline": sp_parsed.get("core_logline", ""),
+                        "theme_statement": sp_parsed.get("theme_statement", ""),
+                    })
+                else:
+                    logger.warning("story_planner 未生成有效Story Plan数据")
+                    await self.state_machine.update_result_data(project_id, "story_plan", {})
+                    await self.state_machine.update_result_data(project_id, "layer0_story_plan_built", True)
+
+            elif skill == "world_builder":
                 pre_parsed = data.get("world_parsed")
                 text = data.get("world_setting", "")
                 parsed = pre_parsed if isinstance(pre_parsed, dict) else parse_llm_json(text)
@@ -1818,6 +1981,19 @@ class PipelineExecutor:
                                                      {"entity_id": scene_id})
                     await self._index_scene_to_rag(project_id, scene_id, existing_scene_code, narration, dialogue, actions, characters_involved)
                     await self._sync_foreshadow_states(project_id, scene_id, foreshadow_ops)
+                    try:
+                        _scp = [narration]
+                        if isinstance(dialogue, list):
+                            _scp.extend(f"{d.get('char', '?')}: {d.get('text', '')}" for d in dialogue if isinstance(d, dict))
+                        elif dialogue:
+                            _scp.append(str(dialogue))
+                        if isinstance(actions, list):
+                            _scp.extend(str(a) for a in actions)
+                        elif actions:
+                            _scp.append(str(actions))
+                        await extract_and_update_memory(self.db, project_id, scene_id, str(existing.get("chapter_id") or planned_chapter_id), "\n".join(_scp))
+                    except Exception as _me:
+                        logger.warning("叙事记忆提取失败: %s", _me)
                     return
             except Exception as e:
                 logger.warning("更新已有场景失败: %s, 尝试创建新场景", e)
@@ -1911,6 +2087,19 @@ class PipelineExecutor:
                                              {"entity_id": new_scene_id})
             await self._index_scene_to_rag(project_id, new_scene_id, scene_code, narration, dialogue, actions, characters_involved)
             await self._sync_foreshadow_states(project_id, new_scene_id, foreshadow_ops)
+            try:
+                _scp = [narration]
+                if isinstance(dialogue, list):
+                    _scp.extend(f"{d.get('char', '?')}: {d.get('text', '')}" for d in dialogue if isinstance(d, dict))
+                elif dialogue:
+                    _scp.append(str(dialogue))
+                if isinstance(actions, list):
+                    _scp.extend(str(a) for a in actions)
+                elif actions:
+                    _scp.append(str(actions))
+                await extract_and_update_memory(self.db, project_id, new_scene_id, chapter_id, "\n".join(_scp))
+            except Exception as _me:
+                logger.warning("叙事记忆提取失败: %s", _me)
         except Exception as e:
             logger.warning("创建新场景失败: %s", e)
 
@@ -2156,6 +2345,18 @@ class PipelineExecutor:
             for _k in ("wow_moment_density", "chapter_count"):
                 if _k not in payload and _k in (state.result_data or {}):
                     payload[_k] = state.result_data[_k]
+
+        story_plan_data = state.result_data.get("story_plan", {})
+        if story_plan_data and step.skill != "story_planner":
+            payload["story_plan_context"] = {
+                "core_logline": story_plan_data.get("core_logline", ""),
+                "theme_statement": story_plan_data.get("theme_statement", ""),
+                "character_arcs": story_plan_data.get("character_arcs", []),
+                "plot_nodes": story_plan_data.get("plot_nodes", []),
+                "foreshadow_routes": story_plan_data.get("foreshadow_routes", []),
+                "emotion_curve_plan": story_plan_data.get("emotion_curve_plan", []),
+                "choice_philosophy": story_plan_data.get("choice_philosophy", ""),
+            }
 
         return payload
 

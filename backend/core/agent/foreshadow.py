@@ -158,6 +158,25 @@ class ForeshadowAgent(BaseAgent):
 
         rendered_prompt = f"{system_prompt}\n\n{user_prompt}"
 
+        story_plan_ctx = payload.get("story_plan_context")
+        if story_plan_ctx and story_plan_ctx.get("foreshadow_routes"):
+            routes = story_plan_ctx["foreshadow_routes"]
+            route_lines = []
+            for route in routes:
+                if isinstance(route, dict):
+                    route_name = route.get("name", route.get("title", "未命名路线"))
+                    route_desc = route.get("description", route.get("summary", str(route)))
+                    route_lines.append(f"  - {route_name}: {route_desc}")
+                elif isinstance(route, str):
+                    route_lines.append(f"  - {route}")
+            if route_lines:
+                foreshadow_routes_constraint = (
+                    "\n\n【Story Plan伏笔路线约束 — 强制遵守】\n"
+                    "伏笔路线必须与以下Story Plan中定义的伏笔路线一致，不得偏离：\n"
+                    + "\n".join(route_lines)
+                )
+                rendered_prompt += foreshadow_routes_constraint
+
         return {"rendered_prompt": rendered_prompt}
 
     def _select_skill(self, task_type: str) -> Skill:

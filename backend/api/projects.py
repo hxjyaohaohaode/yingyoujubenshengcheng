@@ -1,3 +1,4 @@
+from __future__ import annotations
 import uuid
 import logging
 from datetime import datetime, UTC
@@ -20,6 +21,7 @@ from models.project_config import ProjectConfig
 from schemas.project import (
     ProjectCreate, ProjectUpdate, ProjectResponse,
     ProjectConfigSchema, ProjectListResponse,
+    StoryPlanSchema,
 )
 from core.script_generator.config_recommender import ConfigRecommender
 from utils.data_sync import notify_data_changed as _notify_data_changed
@@ -34,11 +36,11 @@ WORLD_LOCKS_BUCKET = "world_config_locks"
 
 
 def _ensure_custom_rule_buckets(config: ProjectConfig) -> dict:
-    payload = dict(config.custom_checker_rules or {})
+    payload = dict(config.custom_checker_rules or {})  # type: ignore[arg-type]
     if not isinstance(payload.get(WORLD_SETTINGS_BUCKET), dict):
-        payload[WORLD_SETTINGS_BUCKET] = {}
+        payload[WORLD_SETTINGS_BUCKET] = {}  # type: ignore[index]
     if not isinstance(payload.get(WORLD_LOCKS_BUCKET), dict):
-        payload[WORLD_LOCKS_BUCKET] = {}
+        payload[WORLD_LOCKS_BUCKET] = {}  # type: ignore[index]
     return payload
 
 
@@ -55,7 +57,7 @@ def _set_world_config_value(config: ProjectConfig, key: str, value):
         return
     payload = _ensure_custom_rule_buckets(config)
     payload[WORLD_SETTINGS_BUCKET][key] = value
-    config.custom_checker_rules = payload
+    config.custom_checker_rules = payload  # type: ignore[assignment]
 
 
 def _set_world_config_lock(config: ProjectConfig, key: str, is_locked: bool):
@@ -67,7 +69,7 @@ def _set_world_config_lock(config: ProjectConfig, key: str, is_locked: bool):
         }
     else:
         payload[WORLD_LOCKS_BUCKET].pop(key, None)
-    config.custom_checker_rules = payload
+    config.custom_checker_rules = payload  # type: ignore[assignment]
 
 
 def _serialize_world_config_items(project_id: str, config: ProjectConfig) -> list[dict]:
@@ -149,14 +151,14 @@ def _project_to_response(project: Project) -> ProjectResponse:
         )
 
     return ProjectResponse(
-        id=project.id,
-        name=project.name,
-        description=project.description or "",
-        status=project.status or "draft",
-        template_id=project.template_id,
+        id=project.id,  # type: ignore[arg-type]
+        name=project.name,  # type: ignore[arg-type]
+        description=project.description or "",  # type: ignore[arg-type]
+        status=project.status or "draft",  # type: ignore[arg-type]
+        template_id=project.template_id,  # type: ignore[arg-type]
         config=config_data,
-        created_at=project.created_at or datetime.now(UTC),
-        updated_at=project.updated_at or datetime.now(UTC),
+        created_at=project.created_at or datetime.now(UTC),  # type: ignore[arg-type]
+        updated_at=project.updated_at or datetime.now(UTC),  # type: ignore[arg-type]
     )
 
 
@@ -232,7 +234,7 @@ async def create_project(data: ProjectCreate, db: AsyncSession = Depends(get_db)
         from core.pipeline.state_machine import PipelineStateMachine
         sm = PipelineStateMachine(db)
         template = data.template_id or "interactive_drama"
-        await sm.init(project.id, template, {})
+        await sm.init(project.id, template, {})  # type: ignore[arg-type]
     except Exception as e:
         logger.warning("Pipeline init skipped: %s", e)
 
@@ -288,12 +290,12 @@ async def update_project(
         raise HTTPException(status_code=404, detail="项目不存在")
 
     if data.name is not None:
-        project.name = data.name
+        project.name = data.name  # type: ignore[assignment]
     if data.description is not None:
-        project.description = data.description
+        project.description = data.description  # type: ignore[assignment]
     if data.status is not None:
-        project.status = data.status
-    project.updated_at = datetime.now(UTC)
+        project.status = data.status  # type: ignore[assignment]
+    project.updated_at = datetime.now(UTC)  # type: ignore[assignment]
     await db.flush()
 
     if data.config is not None:
@@ -308,7 +310,7 @@ async def update_project(
                 value = getattr(cfg, field_name, None)
                 if value is not None:
                     setattr(existing_config, field_name, value)
-            existing_config.updated_at = datetime.now(UTC)
+            existing_config.updated_at = datetime.now(UTC)  # type: ignore[assignment]
         else:
             new_config = ProjectConfig(
                 project_id=project_id,
@@ -496,10 +498,10 @@ async def update_project_config_key(
             rules_payload[WORLD_LOCKS_BUCKET].pop(key, None)
 
     if not hasattr(config, key) or has_lock:
-        config.custom_checker_rules = rules_payload
+        config.custom_checker_rules = rules_payload  # type: ignore[assignment]
         flag_modified(config, "custom_checker_rules")
 
-    config.updated_at = datetime.now(UTC)
+    config.updated_at = datetime.now(UTC)  # type: ignore[assignment]
     await db.commit()
 
     await _notify_data_changed(str(project_id), "world_config_updated")
@@ -544,7 +546,7 @@ async def reset_project(project_id: str, db: AsyncSession = Depends(get_db)):
     )
     project = project_result.scalar_one_or_none()
     if project:
-        project.status = "draft"
+        project.status = "draft"  # type: ignore[assignment]
 
     await db.commit()
     return {"status": "ok", "message": "项目已重置"}
@@ -681,7 +683,7 @@ async def get_dashboard(project_id: str, db: AsyncSession = Depends(get_db)):
         .where(Scene.project_id == project_id)
         .group_by(Scene.status)
     )
-    status_counts = dict(status_counts_result.all())
+    status_counts = dict(list(status_counts_result.all()))  # type: ignore[arg-type]
 
     foreshadow_count_result = await db.execute(
         select(func.count(Foreshadow.id)).where(Foreshadow.project_id == project_id)
@@ -707,7 +709,7 @@ async def get_dashboard(project_id: str, db: AsyncSession = Depends(get_db)):
     chapter_count = chapter_count_result.scalar_one() or 0
 
     target_word_count = config.target_word_count if config else 50000
-    word_progress = round(total_word_count / max(target_word_count, 1) * 100, 1) if target_word_count else 0
+    word_progress = round(total_word_count / max(target_word_count, 1) * 100, 1) if target_word_count else 0  # type: ignore[arg-type,operator]
 
     recent_activity = []
     audit_result = await db.execute(
@@ -720,7 +722,7 @@ async def get_dashboard(project_id: str, db: AsyncSession = Depends(get_db)):
         recent_activity.append({
             "type": record.audit_type,
             "description": f"审核结果: {record.overall_result or '无'}",
-            "timestamp": record.created_at.isoformat() if record.created_at else "",
+            "timestamp": record.created_at.isoformat() if record.created_at else "",  # type: ignore[union-attr]
         })
 
     emotion_preview = []
@@ -737,7 +739,7 @@ async def get_dashboard(project_id: str, db: AsyncSession = Depends(get_db)):
         if avg_emotion is not None:
             emotion_value = float(avg_emotion)
         elif ch.emotion_target is not None:
-            emotion_value = float(ch.emotion_target)
+            emotion_value = float(ch.emotion_target)  # type: ignore[arg-type]
         else:
             emotion_value = 0.0
         emotion_preview.append({
@@ -750,10 +752,10 @@ async def get_dashboard(project_id: str, db: AsyncSession = Depends(get_db)):
         .where(Foreshadow.project_id == project_id)
         .group_by(Foreshadow.health)
     )
-    fs_health_counts = dict(fs_health_result.all())
-    foreshadows_normal = fs_health_counts.get("normal", 0)
-    foreshadows_warning = fs_health_counts.get("warning", 0)
-    foreshadows_danger = fs_health_counts.get("danger", 0)
+    fs_health_counts = dict(list(fs_health_result.all()))  # type: ignore[arg-type]
+    foreshadows_normal = fs_health_counts.get("normal", 0)  # type: ignore[arg-type]
+    foreshadows_warning = fs_health_counts.get("warning", 0)  # type: ignore[arg-type]
+    foreshadows_danger = fs_health_counts.get("danger", 0)  # type: ignore[arg-type]
 
     phase_progress = await _compute_phase_progress(
         db, project_id, chapter_count, scene_count,
@@ -780,10 +782,10 @@ async def get_dashboard(project_id: str, db: AsyncSession = Depends(get_db)):
             "target_word_count": target_word_count,
             "word_progress": word_progress,
             "scene_count": scene_count,
-            "scenes_draft": status_counts.get("draft", 0),
-            "scenes_auditing": status_counts.get("auditing", 0),
-            "scenes_approved": status_counts.get("approved", 0) + status_counts.get("passed", 0),
-            "scenes_final": status_counts.get("final", 0),
+            "scenes_draft": status_counts.get("draft", 0),  # type: ignore[arg-type]
+            "scenes_auditing": status_counts.get("auditing", 0),  # type: ignore[arg-type]
+            "scenes_approved": status_counts.get("approved", 0) + status_counts.get("passed", 0),  # type: ignore[arg-type]
+            "scenes_final": status_counts.get("final", 0),  # type: ignore[arg-type]
             "foreshadow_count": foreshadow_count,
             "foreshadows_normal": foreshadows_normal,
             "foreshadows_warning": foreshadows_warning,
@@ -828,17 +830,17 @@ async def _compute_phase_progress(
     )
     total_words = word_count_result.scalar_one() or 0
 
-    scenes_final = status_counts.get("final", 0) + status_counts.get("approved", 0)
+    scenes_final = status_counts.get("final", 0) + status_counts.get("approved", 0)  # type: ignore[arg-type]
     scenes_total = max(scene_count, 1)
 
     phases = [
         {"phase": 0, "name": "世界观构建", "percent": min(100, round(character_count * 5, 1)) if character_count > 0 else 0},
         {"phase": 1, "name": "角色创建", "percent": min(100, round(character_count / max(1, 8) * 100, 1))},
-        {"phase": 2, "name": "章节规划", "percent": min(100, round(chapter_count / max(1, target_chapters) * 100, 1))},
+        {"phase": 2, "name": "章节规划", "percent": min(100, round(chapter_count / max(1, target_chapters) * 100, 1))},  # type: ignore[arg-type]
         {"phase": 3, "name": "场景创作", "percent": min(100, round(scenes_final / scenes_total * 100, 1))},
-        {"phase": 4, "name": "审核与修订", "percent": min(100, round(status_counts.get("final", 0) / scenes_total * 100, 1))},
+        {"phase": 4, "name": "审核与修订", "percent": min(100, round(status_counts.get("final", 0) / scenes_total * 100, 1))},  # type: ignore[arg-type]
         {"phase": 5, "name": "伏笔管理", "percent": min(100, round(foreshadow_count / max(1, 30) * 100, 1)) if foreshadow_count > 0 else 0},
-        {"phase": 6, "name": "导出发布", "percent": min(100, round(total_words / max(1, target_word_count) * 100, 1))},
+        {"phase": 6, "name": "导出发布", "percent": min(100, round(total_words / max(1, target_word_count) * 100, 1))},  # type: ignore[arg-type]
     ]
 
     current_phase = 0
@@ -852,3 +854,64 @@ async def _compute_phase_progress(
         "current_phase": current_phase,
         "phases": phases,
     }
+
+
+@router.get("/projects/{project_id}/story-plan", response_model=StoryPlanSchema)
+async def get_story_plan(project_id: str, db: AsyncSession = Depends(get_db)):
+    from services.project_runtime import get_story_plan as _get_story_plan
+    from models.project_config import StoryPlan
+
+    project_result = await db.execute(select(Project).where(Project.id == project_id))
+    project = project_result.scalar_one_or_none()
+    if not project:
+        raise HTTPException(status_code=404, detail="项目不存在")
+
+    plan = await _get_story_plan(db, project_id)
+    if plan is None:
+        plan = StoryPlan()
+    return StoryPlanSchema(
+        core_logline=plan.core_logline,
+        theme_statement=plan.theme_statement,
+        character_arcs=plan.character_arcs,
+        plot_nodes=plan.plot_nodes,
+        foreshadow_routes=plan.foreshadow_routes,
+        emotion_curve_plan=plan.emotion_curve_plan,
+        choice_philosophy=plan.choice_philosophy,
+    )
+
+
+@router.put("/projects/{project_id}/story-plan", response_model=StoryPlanSchema)
+async def put_story_plan(
+    project_id: str,
+    data: StoryPlanSchema,
+    db: AsyncSession = Depends(get_db),
+):
+    from services.project_runtime import save_story_plan as _save_story_plan
+    from models.project_config import StoryPlan
+
+    project_result = await db.execute(select(Project).where(Project.id == project_id))
+    project = project_result.scalar_one_or_none()
+    if not project:
+        raise HTTPException(status_code=404, detail="项目不存在")
+
+    plan = StoryPlan(
+        core_logline=data.core_logline,
+        theme_statement=data.theme_statement,
+        character_arcs=data.character_arcs,
+        plot_nodes=data.plot_nodes,
+        foreshadow_routes=data.foreshadow_routes,
+        emotion_curve_plan=data.emotion_curve_plan,
+        choice_philosophy=data.choice_philosophy,
+    )
+    saved = await _save_story_plan(db, project_id, plan)
+    if saved is None:
+        raise HTTPException(status_code=404, detail="项目配置不存在")
+    return StoryPlanSchema(
+        core_logline=saved.core_logline,
+        theme_statement=saved.theme_statement,
+        character_arcs=saved.character_arcs,
+        plot_nodes=saved.plot_nodes,
+        foreshadow_routes=saved.foreshadow_routes,
+        emotion_curve_plan=saved.emotion_curve_plan,
+        choice_philosophy=saved.choice_philosophy,
+    )

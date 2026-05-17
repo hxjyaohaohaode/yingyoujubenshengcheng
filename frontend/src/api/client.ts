@@ -314,6 +314,16 @@ export interface ChoiceDesign {
 
 // ========== Projects API ==========
 
+export interface StoryPlanSchema {
+  core_logline: string
+  theme_statement: string
+  character_arcs: Record<string, unknown>[]
+  plot_nodes: Record<string, unknown>[]
+  foreshadow_routes: Record<string, unknown>[]
+  emotion_curve_plan: Record<string, unknown>[]
+  choice_philosophy: string
+}
+
 export interface ProjectCreatePayload {
   name: string
   description?: string
@@ -388,6 +398,18 @@ export const projectsApi = {
     },
     signal?: AbortSignal,
   ) => api.post<ValidateConfigResponse>('/projects/validate-config', data, signal),
+  getStoryPlan: (projectId: string) =>
+    api.get<StoryPlanSchema>(`/projects/${projectId}/story-plan`),
+  updateStoryPlan: (projectId: string, data: Partial<StoryPlanSchema>) =>
+    api.put<StoryPlanSchema>(`/projects/${projectId}/story-plan`, data),
+  getConfig: (projectId: string) =>
+    api.get<{ configs: Array<{ id: string; config_key: string; config_value: string; label: string; desc: string; is_locked: boolean; locked_at: string | null }> }>(`/projects/${projectId}/config`),
+  updateConfigKey: (projectId: string, key: string, data: { config_value?: string; is_locked?: boolean }) =>
+    api.put<{ status: string; key: string; value: string; is_locked: boolean; locked_at: string | null }>(`/projects/${projectId}/config/${key}`, data),
+  reset: (projectId: string) =>
+    api.post<{ status: string; message: string }>(`/projects/${projectId}/reset`),
+  dashboard: (projectId: string) =>
+    api.get<unknown>(`/projects/${projectId}/dashboard`),
 }
 
 // ========== Characters API ==========
@@ -455,6 +477,12 @@ export const foreshadowsApi = {
       `/projects/${projectId}/foreshadow-chemical-reaction`,
       foreshadowIds ? { foreshadow_ids: foreshadowIds } : undefined,
     ),
+  listLinks: (projectId: string) =>
+    api.get<unknown[]>(`/projects/${projectId}/foreshadow-links`),
+  createLink: (projectId: string, data: { source_fs_id: string; target_fs_id: string; link_type: string; description?: string }) =>
+    api.post<unknown>(`/projects/${projectId}/foreshadow-links`, data),
+  deleteLink: (projectId: string, linkId: string) =>
+    api.delete<void>(`/projects/${projectId}/foreshadow-links/${linkId}`),
 }
 
 // ========== Scenes API ==========
@@ -475,6 +503,12 @@ export const scenesApi = {
     api.put<Scene>(`/projects/${projectId}/scenes/${sceneId}`, data),
   delete: (projectId: string, sceneId: string) =>
     api.delete<void>(`/projects/${projectId}/scenes/${sceneId}`),
+  listVersions: (projectId: string, sceneId: string) =>
+    api.get<unknown[]>(`/projects/${projectId}/scenes/${sceneId}/versions`),
+  getVersion: (projectId: string, sceneId: string, version: number) =>
+    api.get<unknown>(`/projects/${projectId}/scenes/${sceneId}/versions/${version}`),
+  finalize: (projectId: string, sceneId: string) =>
+    api.post<unknown>(`/projects/${projectId}/scenes/${sceneId}/finalize`),
 }
 
 // ========== Chapters API ==========
@@ -590,10 +624,16 @@ export const pipelineApi = {
   templates: () =>
     api.get<{ templates: { name: string; description: string; phases: number }[] }>(`/pipeline/templates`),
   getTemplate: (name: string) =>
-    api.get<{ name: string; description: string; phases: Array<{ name: string; human_gate: boolean; steps: Array<{ agent: string; skill: string }> }> }>(`/templates/${encodeURIComponent(name)}`),
+    api.get<{ name: string; description: string; phases: Array<{ name: string; steps: number; human_gate: boolean }>; scale_config: Record<string, unknown> }>(`/pipeline/templates/${encodeURIComponent(name)}`),
+  generateScript: (projectId: string, payload?: Record<string, unknown>) =>
+    api.post<{ task_id: string; status: string }>(`/projects/${projectId}/pipeline/generate-script`, payload),
+  generateFullScript: (projectId: string, payload?: Record<string, unknown>) =>
+    api.post<{ task_id: string; status: string }>(`/projects/${projectId}/pipeline/generate-full-script`, payload),
 }
 
 export const searchApi = {
+  search: (projectId: string, query: string) =>
+    api.post<{ status: string; message?: string; results: unknown[] }>(`/projects/${projectId}/search`, { query }),
   searchStream: async (projectId: string, query: string) => {
     const res = await fetch(`${API_BASE}/projects/${projectId}/search/stream`, {
       method: 'POST',
@@ -604,4 +644,73 @@ export const searchApi = {
   },
   searchQuick: (projectId: string, query: string) =>
     api.post<{ status: string; message?: string; summary: string; sources: Array<{ title: string; url: string; snippet: string; source: string }> }>(`/projects/${projectId}/search/quick`, { query }),
+  searchStatus: (projectId: string) =>
+    api.get<{ status: string; message?: string }>(`/projects/${projectId}/search/status`),
+}
+
+export const aiApi = {
+  getTaskProgress: (taskId: string) =>
+    api.get<{ status: string; progress: number; estimated_time: string }>(`/ai/tasks/${taskId}`),
+  cancelTask: (taskId: string) =>
+    api.post<{ status: string; message: string }>(`/ai/cancel/${taskId}`),
+  generateScene: (projectId: string, sceneId: string, requirements?: string) =>
+    api.post<{ task_id: string }>(`/ai/projects/${projectId}/scenes/${sceneId}/generate`, requirements ? { requirements } : undefined),
+  generateSceneV2: (projectId: string, sceneId: string, payload?: Record<string, unknown>) =>
+    api.post<{ task_id: string }>(`/ai/projects/${projectId}/scenes/${sceneId}/generate-v2`, payload),
+  auditScene: (projectId: string, sceneId: string) =>
+    api.post<{ task_id: string }>(`/ai/projects/${projectId}/scenes/${sceneId}/audit`),
+  generateForeshadows: (projectId: string) =>
+    api.post<{ task_id?: string }>(`/ai/projects/${projectId}/foreshadows/generate`),
+  generateForeshadowDesign: (projectId: string) =>
+    api.post<{ task_id: string }>(`/ai/foreshadow-design/${projectId}`),
+  dispatchWowPlans: (projectId: string, foreshadowId: string) =>
+    api.post<{ task_id: string }>(`/ai/projects/${projectId}/foreshadows/${foreshadowId}/wow-plans`),
+  fullAudit: (projectId: string) =>
+    api.post<{ task_id?: string; status?: string }>(`/ai/projects/${projectId}/full-audit`),
+  generateWorldConfig: (projectId: string, configKey: string) =>
+    api.post<{ task_id: string }>(`/ai/world-gen/${projectId}/${configKey}`),
+  generateCharacters: (projectId: string, payload?: Record<string, unknown>) =>
+    api.post<{ proposals: unknown[] }>(`/ai/character-gen/${projectId}`, payload),
+  generateRelationNetwork: (projectId: string) =>
+    api.post<unknown>(`/ai/relation-network-gen/${projectId}`),
+  checkForeshadowHealth: (projectId: string) =>
+    api.post<{ total: number; normal: number; warning: number; danger: number; suggestions: string[] }>(`/ai/foreshadow-health/${projectId}`),
+  analyzeForeshadowReaction: (projectId: string) =>
+    api.post<{ suggestions?: string[] }>(`/ai/foreshadow-reaction/${projectId}`),
+  generateWowPlans: (foreshadowId: string) =>
+    api.post<{ plans: Array<{ id?: string; type?: string; summary?: string; score?: number }> }>(`/ai/foreshadow-wow-gen/${foreshadowId}`),
+  generateChapterOutline: (projectId: string) =>
+    api.post<unknown>(`/ai/chapter-outline/${projectId}`),
+  designEmotionCurve: (projectId: string) =>
+    api.post<{ status: string; message: string; chapters?: Array<{ chapter_number: number; emotion_target: number }> }>(`/ai/emotion-curve-design/${projectId}`),
+  rhythmCheck: (projectId: string) =>
+    api.post<unknown>(`/ai/rhythm-check/${projectId}`),
+  optimizeWowDistribution: (projectId: string) =>
+    api.post<unknown>(`/ai/wow-distribution/${projectId}`),
+}
+
+export const uploadApi = {
+  upload: (projectId: string, file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return fetch(`${API_BASE}/projects/${projectId}/upload`, {
+      method: 'POST',
+      body: formData,
+    }).then(res => res.json()) as Promise<{ id: string; filename: string; size: number }>
+  },
+  list: (projectId: string) =>
+    api.get<{ files: Array<{ id: string; filename: string; size: number; uploaded_at: string }> }>(`/projects/${projectId}/uploads`),
+  delete: (projectId: string, fileId: string) =>
+    api.delete<void>(`/projects/${projectId}/uploads/${fileId}`),
+  parseScript: (content: string, filename?: string) =>
+    api.post<{ scenes: unknown[] }>(`/projects/scripts/parse`, { content, filename }),
+}
+
+export const narrativeApi = {
+  getTimeline: (projectId: string) =>
+    api.get<{ scene_count: number; timeline: Array<{ scene_id: string; scene_code: string; chapter_number: number; location: string; time_start: string; time_end: string; emotion_level: number }> }>(`/ai/projects/${projectId}/timeline`),
+  triggerGlobalReview: (projectId: string) =>
+    api.post<{ status: string; report: unknown }>(`/projects/${projectId}/review/global`),
+  refineScene: (sceneId: string, projectId: string) =>
+    api.post<{ status: string; refined_content: string }>(`/scenes/${sceneId}/refine`, { project_id: projectId }),
 }

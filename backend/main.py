@@ -446,10 +446,10 @@ async def trigger_global_review(project_id: str, db=Depends(get_db)):
     report = await run_global_review(db, project_id)
     return {
         "project_id": project_id,
-        "structure_issues": report.structure_issues,
         "rhythm_issues": report.rhythm_issues,
         "unresolved_foreshadows": report.unresolved_foreshadows,
         "character_arc_issues": report.character_arc_issues,
+        "theme_deviation_issues": report.theme_deviation_issues,
         "overall_score": report.overall_score,
         "summary": report.summary,
     }

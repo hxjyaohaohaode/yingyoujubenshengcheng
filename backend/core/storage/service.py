@@ -278,6 +278,34 @@ class StorageService:
         )
         await self.db.commit()
 
+    async def update_foreshadow(self, project_id: str, foreshadow_id: str,
+                                 updates: dict):
+        _ALLOWED_FS_COLS = {
+            "current_status", "reinforce_count", "reinforce_scenes",
+            "plant_scene_id", "reveal_scene_id", "health", "wow_plans",
+            "wow_selected", "foreshadow_tier", "worldview_refs",
+            "character_refs", "foreshadow_links", "reclaim_status",
+            "plant_location", "reinforce_locations", "reveal_location",
+            "name", "fs_type", "surface_layer", "deep_layer", "truth_layer",
+        }
+        safe_updates = {k: v for k, v in updates.items() if k in _ALLOWED_FS_COLS}
+        if not safe_updates:
+            return
+        serialized = {}
+        for k, v in safe_updates.items():
+            serialized[k] = json.dumps(v, ensure_ascii=False) if isinstance(v, (dict, list)) else v
+        set_clauses = [f"{key} = :{key}" for key in serialized]
+        params = {"project_id": project_id, "foreshadow_id": foreshadow_id, **serialized}
+        now = _now_expr()
+        await self.db.execute(
+            text(
+                f"UPDATE foreshadows SET {', '.join(set_clauses)}, updated_at = {now} "
+                f"WHERE id = :foreshadow_id AND project_id = :project_id"
+            ),
+            params,
+        )
+        await self.db.commit()
+
     async def update_relation(self, project_id: str, char_a: str, char_b: str,
                                updates: dict):
         _ALLOWED_REL_COLS = {
@@ -529,6 +557,24 @@ class StorageService:
             text("SELECT * FROM chapters WHERE project_id = :project_id ORDER BY chapter_number"),
             {"project_id": project_id},
         )
+        rows = result.fetchall()
+        cols = result.keys()
+        return [dict(zip(cols, row)) for row in rows]
+
+    async def get_chapter_states(self, project_id: str,
+                                  statuses: list[str] | None = None) -> list[dict]:
+        if statuses:
+            placeholders, params = _in_placeholder("st", statuses)
+            params["project_id"] = project_id
+            result = await self.db.execute(
+                text(f"SELECT * FROM chapters WHERE project_id = :project_id AND status IN ({placeholders})"),
+                params,
+            )
+        else:
+            result = await self.db.execute(
+                text("SELECT * FROM chapters WHERE project_id = :project_id ORDER BY chapter_number"),
+                {"project_id": project_id},
+            )
         rows = result.fetchall()
         cols = result.keys()
         return [dict(zip(cols, row)) for row in rows]
@@ -861,7 +907,7 @@ class StorageService:
             text("UPDATE project_configs SET custom_checker_rules = :rules, updated_at = " + _now_expr() + " WHERE project_id = :pid"),
             {"pid": project_id, "rules": json.dumps(rules, ensure_ascii=False)},
         )
-        if result.rowcount == 0:
+        if getattr(result, 'rowcount', 0) == 0:
             await self.db.execute(
                 text(
                     "INSERT INTO project_configs (id, project_id, custom_checker_rules, "

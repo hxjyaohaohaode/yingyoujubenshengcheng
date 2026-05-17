@@ -316,6 +316,16 @@ async def list_pipeline_templates():
     return {"templates": _list()}
 
 
+@public_router.get("/templates/{name}")
+async def get_pipeline_template(name: str):
+    from core.pipeline.template_loader import get_template as _get
+    try:
+        template = _get(name)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return {"name": template.name, "description": template.description, "phases": [{"name": p.name, "steps": len(p.steps), "human_gate": p.human_gate} for p in template.phases], "scale_config": template.scale_config}
+
+
 @router.post("/generate-script")
 async def generate_script(project_id: str, payload: dict | None = Body(default=None), db: AsyncSession = Depends(get_db)):
     """

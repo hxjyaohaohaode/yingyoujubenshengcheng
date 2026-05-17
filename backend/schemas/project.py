@@ -11,6 +11,16 @@ VALID_WORK_MODES = {"light", "standard", "heavy"}
 VALID_PLAYER_COUNTS = {"single", "dual", "multi"}
 
 
+class StoryPlanSchema(BaseModel):
+    core_logline: str = Field(default="", description="核心故事线一句话概括")
+    theme_statement: str = Field(default="", description="主题声明")
+    character_arcs: List[Dict] = Field(default_factory=list, description="角色弧线规划")
+    plot_nodes: List[Dict] = Field(default_factory=list, description="情节节点规划")
+    foreshadow_routes: List[Dict] = Field(default_factory=list, description="伏笔路线规划")
+    emotion_curve_plan: List[Dict] = Field(default_factory=list, description="情感曲线规划")
+    choice_philosophy: str = Field(default="", description="选择哲学描述")
+
+
 class ProjectConfigSchema(BaseModel):
     target_word_count: int = Field(default=50000, ge=10000, le=1500000, description="目标总字数（1万-150万）")
 

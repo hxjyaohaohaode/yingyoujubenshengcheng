@@ -252,6 +252,18 @@ export default function GlobalWebSocket() {
           eventBus.emit(DataEvents.WORLD_CONFIG_UPDATED, data)
           break
 
+        case 'story_plan_created':
+          queryClientRef.current.invalidateQueries({ queryKey: ['dashboard'] })
+          queryClientRef.current.invalidateQueries({ queryKey: ['story-plan'] })
+          eventBus.emit(DataEvents.STORY_PLAN_CREATED, data)
+          break
+
+        case 'story_plan_updated':
+          queryClientRef.current.invalidateQueries({ queryKey: ['dashboard'] })
+          queryClientRef.current.invalidateQueries({ queryKey: ['story-plan'] })
+          eventBus.emit(DataEvents.STORY_PLAN_UPDATED, data)
+          break
+
         case 'data_sync_required':
           queryClientRef.current.invalidateQueries({ queryKey: ['dashboard'] })
           queryClientRef.current.invalidateQueries({ queryKey: ['scenes'] })

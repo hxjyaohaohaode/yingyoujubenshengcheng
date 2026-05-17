@@ -97,9 +97,22 @@ _INTERACTIVE_GAME_WRITING = """
 5. **情感锚点**：每3-5个场景必须有一个情感重场（角色关系发生质的改变）
 6. **分支预埋**：重要对白末尾暗示另一种可能（"如果你当时选了..."的既视感）
 7. **环境叙事**：场景本身应当传达故事信息（用场景说故事，不只用字说故事）
+
+【低分支高情感范式 — 选择设计必须遵守】
+1. **选择密度**：每章仅2-3个关键选择点，选择点之间用叙事和角色互动填充
+2. **道德灰度原则**：每个选择都没有完美答案——好选择有隐性代价，坏选择有合理动机
+3. **隐藏选项**：每个关键选择点包含1个隐藏选项（is_hidden=true），跳出二元对立的"第三条路"
+4. **分支层级控制**：选择导致的分支层级严格控制在3-4级以内，不同分支在3-4层内必须汇入主线
+5. **后果链推演**：每个选择的三层后果（直接→间接→远期）必须形成因果递进链
 """
 
-SCENE_WRITER_SKILL.prompt_template = """你是专业剧本编剧。
+SCENE_WRITER_SKILL.prompt_template = """你是全球顶尖的互动影游场景编剧。
+
+{_chinese_writing_standards}
+
+{_interactive_game_writing}
+
+{_scene_gen_standards}
 
 ## 世界观
 {world_setting}
@@ -119,9 +132,15 @@ SCENE_WRITER_SKILL.prompt_template = """你是专业剧本编剧。
 ## 目标字数
 {target_word_count}字
 
+{story_plan_core_direction}
+
 {previous_scene_context}
 
 {scene_position_info}
+
+{word_constraints}
+
+{wow_requirements}
 
 请撰写本场景的完整剧本内容。
 
@@ -133,18 +152,27 @@ SCENE_WRITER_SKILL.prompt_template = """你是专业剧本编剧。
 
 输出JSON格式:
 {{
-  "narration": "场景叙述文本（完整的场景描写，包含环境、动作、心理活动，200-800字）",
+  "narration": "完整的小说式场景叙述正文（必须包含画面感+至少两种感官描写）",
+  "sensory_tags": ["使用的感官类型，如visual/auditory/olfactory/tactile/gustatory"],
   "dialogue": [
-    {{"speaker": "角色名", "line": "台词内容", "subtext": "潜台词（可选）", "emotion": "情绪标签"}},
-    ...
+    {{"char": "角色名", "text": "角色实际说出的完整台词", "subtext": "潜台词/真实意图", "language_style": "语言风格标注", "catchphrase_ref": "口头禅引用（如有）"}}
   ],
-  "actions": ["关键动作描述1", "关键动作描述2"],
+  "actions": ["关键动作描写1", "关键动作描写2"],
   "foreshadow_ops": [
-    {{"foreshadow_id": "伏笔ID", "op": "plant|reinforce|reveal", "method": "执行方式描述"}}
+    {{"fs_id": "伏笔ID", "op": "plant|reinforce|reveal", "content": "具体内容描述", "worldview_ref": "关联世界观设定", "text_implementation": "文本实现方式"}}
   ],
-  "emotion_value": 0.0,
-  "wow_moment": {{"type": "reversal|revelation|sacrifice|triumph|betrayal", "description": "哇塞时刻描述"}}或null,
-  "scene_transition": "场景转换描述（如何过渡到下一场景）"
+  "choices": [
+    {{"id": "A", "text": "选项文本", "consequence_direct": "直接后果", "consequence_indirect": "间接后果", "consequence_long_term": "远期后果", "moral_alignment": "good|neutral|evil|gray"}}
+  ],
+  "causal_chain": {{
+    "preconditions": ["前置条件1"],
+    "catalyst": "催化剂",
+    "direct_result": "直接结果",
+    "indirect_result": "间接结果",
+    "far_result": "远期结果"
+  }},
+  "emotion_level": 1-10,
+  "characters_involved": ["角色1", "角色2"]
 }}"""
 SCENE_WRITER_SKILL.output_parser = parse_scene_draft
 
@@ -179,7 +207,7 @@ BRANCH_DESIGNER_SKILL = Skill()
 BRANCH_DESIGNER_SKILL.name = "branch_designer"
 BRANCH_DESIGNER_SKILL.intent = "write.creative"
 BRANCH_DESIGNER_SKILL.model = "ds-reasoner"
-BRANCH_DESIGNER_SKILL.prompt_template = """你是互动叙事设计专家。
+BRANCH_DESIGNER_SKILL.prompt_template = """你是互动叙事设计专家，精通"低分支高情感"范式。
 
 ## 当前场景
 {scene_summary}
@@ -191,21 +219,44 @@ BRANCH_DESIGNER_SKILL.prompt_template = """你是互动叙事设计专家。
 {foreshadow_tasks}
 
 ## 分支约束
-- 分支深度上限: {max_branch_depth}层
+- 分支深度上限: {max_branch_depth}层（严格控制在3-4级以内）
 - 每选择最少: {min_branches}个分支
 - 每选择最多: {max_branches}个分支
 - 目标结局数: {target_ending_count}个
 
+## 低分支高情感范式 — 必须遵守
+
+### 选择密度
+- 每章仅2-3个关键选择点
+- 选择点之间用叙事和角色互动填充，不堆砌选择
+- 每个选择必须是真正影响剧情走向的抉择，不是无关痛痒的分支
+
+### 道德灰度原则
+- 每个选择都没有完美答案，好选择有隐性代价，坏选择有合理动机
+- 选项之间不是简单的对/错，而是不同代价和不同价值取向
+- 玩家必须在两个都不完美的选项间做出艰难抉择
+
+### 隐藏选项
+- 每个关键选择点必须包含1个隐藏选项（is_hidden=true）
+- 隐藏选项是跳出二元对立的"第三条路"——创造性解法或非常规思路
+- 隐藏选项需要特定前置条件才能解锁（如：特定角色好感度、已知信息、前置选择）
+
+### 分支层级控制
+- 选择导致的分支层级严格控制在3-4级以内
+- 不同分支在3-4层内必须汇入主线（convergence），避免分支爆炸
+- 汇入点保留选择后果的痕迹，但叙事重新聚焦主线
+
 ## 要求
 设计 2-3 个选择分支:
 - 不是对/错的选择，而是不同代价
-- 影响延迟显现
+- 影响延迟显现（直接后果→间接后果→远期后果）
 - 不同选择揭示不同真相
-- 设计 1 个隐藏选项（需要特定前置条件）
-- 避免过度分叉导致分支爆炸，确保每个分支都有叙事价值
+- 1 个隐藏选项（需要特定前置条件，跳出二元对立）
+- 分支在3-4层内汇入主线
+- 每个选择必须有情感分量，让玩家犹豫不决
 
 请输出选择节点 JSON 数组:
-[{{"id": "A", "text": "选项文本", "consequence": "直接后果", "next_scene": "下一场景编号", "hidden": false, "prerequisites": []}}]"""
+[{{"id": "A", "text": "选项文本", "consequence_direct": "直接后果", "consequence_indirect": "间接后果", "consequence_long_term": "远期后果", "moral_alignment": "good/neutral/evil/gray", "next_scene": "下一场景编号", "hidden": false, "prerequisites": [], "convergence_depth": 3}}]"""
 BRANCH_DESIGNER_SKILL.output_parser = lambda text: {"choices": parse_scene_draft(text).get("choices", [])}
 
 GENRE_DIMENSION_MAP = {
@@ -439,6 +490,8 @@ CHARACTER_DESIGNER_SKILL.prompt_template = """你是角色设计专家。
 - 利益阵营的对立和交叉
 - 信息差（不同角色掌握不同信息片段）
 
+{story_plan_character_arcs}
+
 输出JSON数组格式，每个角色包含所有上述字段。
 角色设计深度应与目标字数匹配：10万字以内角色关系简洁清晰，50万字以上需要复杂的角色网络和内心层次。"""
 CHARACTER_DESIGNER_SKILL.output_parser = lambda text: {"characters": text}
@@ -529,7 +582,9 @@ OUTLINE_WRITER_SKILL.prompt_template = """你是剧本大纲专家。
 大纲策略应与目标总字数匹配：
 - 1万-5万字：紧密叙事，每章必须有实质性推进
 - 5万-20万字：中等节奏，注意中期疲劳点的预防
-- 20万-150万字：长线布局，前30%建立世界观和角色关系网，中间50%逐步升级冲突，最后20%收束多线。输出JSON格式，每个chapter必须包含sections数组。"""
+- 20万-150万字：长线布局，前30%建立世界观和角色关系网，中间50%逐步升级冲突，最后20%收束多线。输出JSON格式，每个chapter必须包含sections数组。
+
+{story_plan_plot_nodes}"""
 OUTLINE_WRITER_SKILL.output_parser = parse_outline
 
 
@@ -718,8 +773,10 @@ class CreatorAgent(BaseAgent):
                     line["text"] = text
             validated.append({
                 "char": char_name,
-                "text": line.get("text", ""),
+                "text": line.get("text", line.get("line", "")),
                 "subtext": line.get("subtext", ""),
+                "language_style": line.get("language_style", ""),
+                "catchphrase_ref": line.get("catchphrase_ref", ""),
             })
 
         result["dialogue"] = validated
@@ -739,10 +796,20 @@ class CreatorAgent(BaseAgent):
                 choice["hidden"] = False
             if "prerequisites" not in choice:
                 choice["prerequisites"] = []
+            if "is_hidden" not in choice:
+                choice["is_hidden"] = choice.get("hidden", False)
+            if "convergence_depth" not in choice:
+                choice["convergence_depth"] = min(4, payload.get("max_branch_depth", 3))
+            if not choice.get("consequence_direct") and choice.get("consequence"):
+                choice["consequence_direct"] = choice["consequence"]
+            if not choice.get("moral_alignment"):
+                choice["moral_alignment"] = "gray"
 
-        if len(choices) >= 2 and not any(c.get("hidden") for c in choices):
+        if len(choices) >= 2 and not any(c.get("is_hidden") or c.get("hidden") for c in choices):
+            choices[-1]["is_hidden"] = True
             choices[-1]["hidden"] = True
             choices[-1]["prerequisites"] = choices[-1].get("prerequisites", ["特定前置条件"])
+            choices[-1]["moral_alignment"] = "gray"
 
         result["choices"] = choices
         return result
@@ -817,6 +884,28 @@ class CreatorAgent(BaseAgent):
             context["theme"] = payload.get("theme", project_config.get("theme", ""))
             context["narrative_pov"] = payload.get("narrative_pov", project_config.get("narrative_pov", "third_person"))
 
+            story_plan_ctx = payload.get("story_plan_context")
+            if story_plan_ctx and story_plan_ctx.get("character_arcs"):
+                arcs = story_plan_ctx["character_arcs"]
+                arc_lines = []
+                for arc in arcs:
+                    if isinstance(arc, dict):
+                        arc_name = arc.get("character_name", arc.get("name", "未命名"))
+                        arc_desc = arc.get("arc_description", arc.get("description", str(arc)))
+                        arc_lines.append(f"  - {arc_name}: {arc_desc}")
+                    elif isinstance(arc, str):
+                        arc_lines.append(f"  - {arc}")
+                if arc_lines:
+                    context["story_plan_character_arcs"] = (
+                        "【Story Plan角色弧线约束 — 强制遵守】\n"
+                        "每个角色的弧线必须与以下Story Plan中定义的角色弧线一致，不得偏离：\n"
+                        + "\n".join(arc_lines)
+                    )
+                else:
+                    context["story_plan_character_arcs"] = ""
+            else:
+                context["story_plan_character_arcs"] = ""
+
         elif task.task_type == "relation_network_designer":
             world_setting_text = self._format_world_settings(layer0, world_config)
             if not world_setting_text or world_setting_text == "世界观尚未详细设定":
@@ -855,6 +944,33 @@ class CreatorAgent(BaseAgent):
             context["theme"] = payload.get("theme", project_config.get("theme", ""))
             context["core_contradiction"] = payload.get("core_contradiction", project_config.get("core_contradiction", ""))
             context["narrative_pov"] = payload.get("narrative_pov", project_config.get("narrative_pov", "third_person"))
+
+            story_plan_ctx = payload.get("story_plan_context")
+            if story_plan_ctx and story_plan_ctx.get("plot_nodes"):
+                nodes = story_plan_ctx["plot_nodes"]
+                node_lines = []
+                for node in nodes:
+                    if isinstance(node, dict):
+                        node_name = node.get("name", node.get("title", "未命名节点"))
+                        node_desc = node.get("description", node.get("summary", str(node)))
+                        node_chapter = node.get("chapter_range", node.get("chapter", ""))
+                        line = f"  - {node_name}"
+                        if node_chapter:
+                            line += f"（章节范围: {node_chapter}）"
+                        line += f": {node_desc}"
+                        node_lines.append(line)
+                    elif isinstance(node, str):
+                        node_lines.append(f"  - {node}")
+                if node_lines:
+                    context["story_plan_plot_nodes"] = (
+                        "【Story Plan情节节点约束 — 强制遵守】\n"
+                        "章节大纲中的情节节点必须覆盖以下Story Plan中定义的所有情节节点，不得遗漏：\n"
+                        + "\n".join(node_lines)
+                    )
+                else:
+                    context["story_plan_plot_nodes"] = ""
+            else:
+                context["story_plan_plot_nodes"] = ""
 
         elif task.task_type in ("scene_writer",):
             if payload.get("fallback_mode") or payload.get("force_prose_format"):
@@ -956,6 +1072,21 @@ class CreatorAgent(BaseAgent):
             context["chapter_outline"] = context.get("chapter_info", "")
             context["chapter_characters"] = context.get("character_states", "")
             context["target_word_count"] = payload.get("target_word_count", project_config.get("target_word_count", 3000))
+
+            story_plan_ctx = payload.get("story_plan_context")
+            if story_plan_ctx and (story_plan_ctx.get("core_logline") or story_plan_ctx.get("theme_statement")):
+                direction_parts = []
+                if story_plan_ctx.get("core_logline"):
+                    direction_parts.append(f"核心故事线：{story_plan_ctx['core_logline']}")
+                if story_plan_ctx.get("theme_statement"):
+                    direction_parts.append(f"主题声明：{story_plan_ctx['theme_statement']}")
+                context["story_plan_core_direction"] = (
+                    "【Story Plan核心方向约束 — 强制遵守】\n"
+                    "本场景的戏剧功能必须推进以下Story Plan中定义的核心方向：\n"
+                    + "\n".join(direction_parts)
+                )
+            else:
+                context["story_plan_core_direction"] = ""
 
             prev_scene_text = context.get("previous_scene", "")
             if prev_scene_text and prev_scene_text.strip():

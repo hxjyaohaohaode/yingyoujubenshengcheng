@@ -27,6 +27,12 @@ phases:
         output_to: layer0
         cost_profile: economy
         timeout: 600
+      - agent: orchestrator
+        skill: story_planner
+        input_from: [user_input, layer0]
+        output_to: layer0
+        cost_profile: quality
+        timeout: 600
 
   - name: 素材准备
     human_gate: false

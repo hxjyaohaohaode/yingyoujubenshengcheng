@@ -31,6 +31,11 @@ from core.narrative.coherence_checker import (
 from core.narrative.revision_orchestrator import (
     GlobalReviewReport,
     RefineResult,
+    SceneDefect,
+    SceneReviewReport,
+    RevisionAction,
+    DramaturgeReport,
+    DramaturgeRefiner,
     run_global_review,
     refine_scene,
 )
@@ -76,6 +81,11 @@ __all__ = [
     "check_theme_consistency",
     "GlobalReviewReport",
     "RefineResult",
+    "SceneDefect",
+    "SceneReviewReport",
+    "RevisionAction",
+    "DramaturgeReport",
+    "DramaturgeRefiner",
     "run_global_review",
     "refine_scene",
     "BudgetAllocation",
