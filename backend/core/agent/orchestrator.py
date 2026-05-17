@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 from collections import defaultdict
 
 from core.agent.base import BaseAgent, AgentTask, AgentResult, layer0_value
@@ -7,6 +8,7 @@ from core.agent.skill import Skill
 from core.agent.registry import register_agent
 from core.context.intent_analyzer import IntentAnalyzer
 from core.context.intent_models import IntentResult
+from core.gateway.client import ModelResponse
 
 logger = logging.getLogger(__name__)
 
@@ -536,8 +538,8 @@ class OrchestratorAgent(BaseAgent):
         target_chapters = payload.get("target_chapters", 10)
         target_word_count = payload.get("target_word_count", 50000)
         user_requirements = payload.get("user_requirements", "")
-        intent_analysis = payload.get("intent_analysis", "")
-        search_results = payload.get("search_results", "")
+        intent_analysis = payload.get("intent_analysis") or None
+        search_results = payload.get("search_results") or None
 
         layer0 = await self.storage.get_layer0(task.project_id)
         if layer0:
@@ -545,6 +547,19 @@ class OrchestratorAgent(BaseAgent):
             core_contradiction = core_contradiction or layer0_value(layer0, "core_contradiction", "")
             theme = theme or layer0_value(layer0, "theme", "")
             tone = tone or layer0_value(layer0, "tone", "")
+
+        if isinstance(intent_analysis, str):
+            try:
+                import json as _json
+                intent_analysis = _json.loads(intent_analysis)
+            except (json.JSONDecodeError, TypeError, ValueError):
+                pass
+        if isinstance(search_results, str):
+            try:
+                import json as _json
+                search_results = _json.loads(search_results)
+            except (json.JSONDecodeError, TypeError, ValueError):
+                pass
 
         system_prompt, user_prompt = build_story_plan_prompt(
             genre=genre,
@@ -554,8 +569,8 @@ class OrchestratorAgent(BaseAgent):
             target_chapters=int(target_chapters) if target_chapters else 10,
             target_word_count=int(target_word_count) if target_word_count else 50000,
             user_requirements=user_requirements,
-            intent_analysis=str(intent_analysis) if intent_analysis else "",
-            search_results=str(search_results) if search_results else "",
+            intent_analysis=intent_analysis if isinstance(intent_analysis, dict) else None,
+            search_results=search_results if isinstance(search_results, (dict, list)) else None,
         )
 
         try:
@@ -566,7 +581,7 @@ class OrchestratorAgent(BaseAgent):
                     {"role": "user", "content": user_prompt},
                 ],
                 cost_profile="quality",
-                max_tokens=4096,
+                max_tokens=8192,
                 temperature=0.7,
             )
             raw_text = response.content if hasattr(response, "content") else str(response)

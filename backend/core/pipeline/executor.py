@@ -1222,6 +1222,8 @@ class PipelineExecutor:
                     sp_parsed = sp_raw
                 elif isinstance(sp_raw, str) and len(sp_raw) > 10:
                     sp_parsed = parse_llm_json(sp_raw)
+                if not sp_parsed and isinstance(data, dict) and "core_logline" in data:
+                    sp_parsed = data
                 if not sp_parsed:
                     for v in data.values():
                         if isinstance(v, dict) and "core_logline" in v:

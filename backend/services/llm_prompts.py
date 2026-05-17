@@ -1173,52 +1173,52 @@ def build_story_plan_prompt(
 【回答格式 — 严格的JSON】
 在```json```代码块中输出：
 ```json
-{{{{
+{{
   "core_logline": "核心梗概（1-2句话，必须包含：主角是谁、面临什么困境、必须做出什么选择，如：一个失去记忆的执法者在追查连环凶案时发现，所有线索都指向自己——而真相可能比凶手更可怕）",
   "theme_statement": "主题声明（一个道德悖论式的命题，如：当正义与生存不可兼得，你选择做一个死去的英雄还是一个活着的罪人？）",
   "recommended_chapter_count": {scale['recommended_chapters']},
   "character_arcs": [
-    {{{{
+    {{
       "role_name": "角色名",
       "role_type": "protagonist|antagonist|love_interest|mentor|rival|wildcard",
       "starting_state": "起点状态（角色在故事开始时的核心信念和行为模式，100-200字）",
       "turning_point": "转折事件（打破角色原有信念的关键事件，100-200字）",
       "ending_state": "终点状态（角色在故事结束时的核心信念和行为模式，100-200字）",
       "arc_tension": "弧线张力描述（起点与终点之间的核心矛盾，50-100字）"
-    }}}}
+    }}
   ],
   "plot_nodes": [
-    {{{{
+    {{
       "node_index": 1,
       "title": "节点标题",
       "description": "节点描述（200-500字，必须包含：触发条件、核心冲突、后果影响）",
       "emotion_level": 1-10,
       "chapter_range": "预计所在章节范围，如'1-2'",
       "dependencies": ["依赖的前置节点index"]
-    }}}}
+    }}
   ],
   "foreshadow_routes": [
-    {{{{
+    {{
       "foreshadow_name": "伏笔名称",
       "plant_description": "埋设描述（在何时何地以何种方式埋设，100-200字）",
       "reinforce_plan": [
-        {{{{"chapter_range": "章节范围", "method": "强化方式描述（50-100字）"}}}},
-        {{{{"chapter_range": "章节范围", "method": "强化方式描述（50-100字）"}}}}
+        {{"chapter_range": "章节范围", "method": "强化方式描述（50-100字）"}},
+        {{"chapter_range": "章节范围", "method": "强化方式描述（50-100字）"}}
       ],
       "reveal_description": "揭露描述（在何时何地以何种方式揭露，100-200字）",
       "wow_factor": "回望价值描述（揭露后回看前文的恍然大悟体验，50-100字）"
-    }}}}
+    }}
   ],
   "emotion_curve_plan": [
-    {{{{
+    {{
       "chapter_range": "章节范围，如'1-2'",
       "emotion_target": 1-10,
       "emotion_label": "情感标签（如：好奇/紧张/震撼/低谷/燃/泪点/终极高潮）",
       "narrative_goal": "叙事目标（此阶段要达成的叙事任务，50-100字）"
-    }}}}
+    }}
   ],
   "choice_philosophy": "选择哲学（200-500字，描述本项目的选择设计原则，必须包含：道德灰度原则、低分支高情感范式、信息差利用策略、选择后果的远期涟漪设计）"
-}}}}
+}}
 ```
 
 【绝对禁止】
@@ -1374,30 +1374,30 @@ def build_scene_gen_prompt(
 
 【输出JSON格式 — 必须严格遵守】
 ```json
-{{{{
+{{
   "narration": "完整的小说式场景叙述正文（必须包含画面感+至少两种感官描写：视觉、听觉、嗅觉、触觉、味觉）",
   "sensory_tags": ["使用的感官类型，如：视觉", "听觉"],
   "dialogue": [
-    {{{{
+    {{
       "char": "角色名",
       "text": "角色实际说出的完整台词",
       "subtext": "潜台词/真实意图（字面意思与真实意图的落差）",
       "language_style": "该角色的语言风格标注（如：言简意赅/文绉绉/口语化）",
       "catchphrase_ref": "口头禅引用（如有，标注口头禅内容；无则填空字符串）"
-    }}}}
+    }}
   ],
   "actions": ["关键动作描写1", "关键动作描写2", "关键动作描写3"],
   "foreshadow_ops": [
-    {{{{
+    {{
       "fs_id": "伏笔ID",
       "op": "plant/reinforce/reveal",
       "content": "具体内容描述",
       "worldview_ref": "关联的世界观设定（config_key+描述，如：social_structure-社会阶层不可逾越）",
       "text_implementation": "文本实现方式（如何在叙述/对白/动作中埋设此伏笔，如：通过角色A闻到异常气味暗示XX）"
-    }}}}
+    }}
   ],
   "choices": [
-    {{{{
+    {{
       "id": "A",
       "text": "选项文本",
       "consequence_direct": "直接后果（选择后立即发生的结果，100-200字）",
@@ -1405,18 +1405,18 @@ def build_scene_gen_prompt(
       "consequence_long_term": "远期后果（远期逐步暴露的深层影响，100-200字）",
       "moral_alignment": "good/neutral/evil/gray",
       "next_scene": "下一场景编号"
-    }}}}
+    }}
   ],
-  "causal_chain": {{{{
+  "causal_chain": {{
     "preconditions": ["前置条件1（具体叙事内容，来自前序场景或世界观设定）", "前置条件2"],
     "catalyst": "催化剂（触发本场景核心事件的具体叙事内容）",
     "direct_result": "直接结果（本场景中立即产生的具体叙事结果）",
     "indirect_result": "间接结果（本场景后中期显现的具体叙事影响）",
     "far_result": "远期结果（远期逐步暴露的具体叙事影响）"
-  }}}},
+  }},
   "emotion_level": 1-10,
   "suggestions": ["下一场景可关注的发展线索..."]
-}}}}
+}}
 ```
 
 【正确vs错误的例子】
@@ -1633,37 +1633,37 @@ def build_scene_triple_prompt(character_info: dict, context_info: dict, goal_inf
 【输出格式 — 严格的JSON】
 在```json```代码块中输出：
 ```json
-{{{{
-  "triple_analysis": {{{{
-    "character": {{{{
+{{
+  "triple_analysis": {{
+    "character": {{
       "identity": "角色身份",
       "personality": "性格特征",
       "current_state": "当前状态（情感/物理/信息状态）",
       "core_motivation": "核心动机（本场景中最想达成什么）",
       "choice_tendency": "选择倾向性（面对抉择时的默认倾向及原因）"
-    }}}},
-    "context": {{{{
+    }},
+    "context": {{
       "environment": "当前环境描述（感官细节+空间布局+氛围）",
       "time": "时间（具体时刻+叙事节奏位置）",
       "previous_scene_ending": "前序场景结尾（未解决的张力/悬念）",
       "active_foreshadows": ["活跃伏笔1", "活跃伏笔2"],
       "worldview_constraints": ["世界观约束1", "世界观约束2"]
-    }}}},
-    "goal": {{{{
+    }},
+    "goal": {{
       "dramatic_function": "setup|conflict|turning_point|climax|resolution",
       "foreshadows_to_advance": ["需推进的伏笔1", "需推进的伏笔2"],
       "character_changes_to_trigger": ["需触发的角色变化1", "需触发的角色变化2"]
-    }}}}
-  }}}},
+    }}
+  }},
   "coupling_analysis": "三元耦合分析（300-500字，说明Character/Context/Goal如何相互驱动和约束）",
   "scene_blueprint": "场景蓝图（500-1000字，基于三元结构生成的场景框架：开场画面→核心冲突→情感转折→收束方式）",
   "key_moments": [
-    {{{{"moment_type": "setup|conflict|turning_point|climax|resolution", "description": "关键时刻描述（100-200字）", "character_action": "角色在此时刻的行为及动机", "emotional_beat": "情感节拍"}}}}
+    {{"moment_type": "setup|conflict|turning_point|climax|resolution", "description": "关键时刻描述（100-200字）", "character_action": "角色在此时刻的行为及动机", "emotional_beat": "情感节拍"}}
   ],
   "dialogue_sketches": [
-    {{{{"character": "角色名", "surface": "字面台词", "subtext": "潜台词", "emotion_tone": "情感底色"}}}}
+    {{"character": "角色名", "surface": "字面台词", "subtext": "潜台词", "emotion_tone": "情感底色"}}
   ]
-}}}}
+}}
 ```
 
 【绝对禁止】
@@ -1758,9 +1758,9 @@ def build_dialogue_prompt(scene_narration: str, characters: list, scene_goal: st
 【输出格式 — 严格的JSON】
 在```json```代码块中输出：
 ```json
-{{{{
+{{
   "dialogue_sequence": [
-    {{{{
+    {{
       "character": "角色名",
       "surface": "角色实际说出口的完整台词",
       "subtext": "潜台词/真实意图（字面意思与真实意图的落差）",
@@ -1769,12 +1769,12 @@ def build_dialogue_prompt(scene_narration: str, characters: list, scene_goal: st
       "catchphrase_ref": "口头禅引用（如有，标注口头禅内容；无则填空字符串）",
       "function": "推进场景目标|揭示角色内心|制造信息差|强化关系张力",
       "target_character": "对谁说话（如为自言自语则填'自语'）"
-    }}}}
+    }}
   ],
   "dialogue_rhythm_analysis": "对白节奏分析（200-400字，说明对白如何通过长短句交替、沉默运用、情感递进控制场景节奏）",
   "subtext_network": "潜台词网络分析（200-400字，说明各角色潜台词之间的交叉、冲突、信息差如何形成暗流网络）",
   "goal_advancement": "场景目标推进分析（200-400字，说明对白序列如何推进scene_goal，哪些对白是关键推进点）"
-}}}}
+}}
 ```
 
 【绝对禁止】

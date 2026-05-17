@@ -97,6 +97,11 @@ ROUTING_TABLE = {
         "fallback": ["mimo-v2.5-pro"],
         "reason": "编排调度、状态管理、上下文组装等规划任务",
     },
+    "create.plan": {
+        "models": ["ds-v4-pro"],
+        "fallback": ["mimo-v2-pro"],
+        "reason": "Story Plan生成需要深度推理和结构化创作",
+    },
     "search": {
         "models": ["mimo-v2.5"],
         "fallback": ["ds-v4-flash"],
